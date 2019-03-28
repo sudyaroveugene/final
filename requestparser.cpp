@@ -57,25 +57,24 @@ int parse_request_start_string( std::string req, struct request_string &res )
     while( isspace( req[k] ) ) k++;    // пропускаем пустые символы после команды
     if( k<req.length() ) req.erase(0, k);    // удаляем их вместе с разобранной командой
     for( k=0; !isspace( req[k] ); k++ );    // k - индекс разделителя
-//    if( k>=req.length() )   // сплошная строка символов вместо URI
-//    {
-//        cerr<< "Bad request: protocol absent"<< endl;
-//        return -1;
-//    }
+    if( k>=req.length() )   // сплошная строка символов вместо URI
+    {
+        cerr<< "Bad request: protocol absent"<< endl;
+        return -1;
+    }
     lexem = req.substr(0, k);       // получили URI
-    auto m = cmatch{};
-    l = regex_match( lexem.c_str(), m, URI_regex );
+    std::cmatch uri_group;      // массив строк с группами URI
+//	группа 2 — схема обращения к ресурсу (часто указывает на сетевой протокол), например http, ftp, file, ldap, mailto, urn
+//	группа 4 — источник=адрес сервера,
+//	группа 5 — путь, содержит путь к ресурсу
+//	группа 7 — запрос,
+//	группа 9 — фрагмент.
+    l = regex_match( lexem.c_str(), uri_group, URI_regex );
     if( !l )
     {
         cerr<< "Bad request: bad URI"<< endl;
         return -1;
     }
-    cout<< "Good URI"<<endl;
-    int j=0;
-    for( auto i=m.begin(); i!=m.end(); i++, j++ )
-        if( !j ) continue;
-        else cout<<"m["<<j<<"]="<<i->str()<<" ";
-    cout<<endl;
     res.uri = lexem;
 
     return 0;
