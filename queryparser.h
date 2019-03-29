@@ -1,10 +1,10 @@
-#ifndef REQUESTPARSER_H
-#define REQUESTPARSER_H
+#ifndef QUERYPARSER_H
+#define QUERYPARSER_H
 
 using namespace std;
 
 // Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
-struct request_string
+struct query_string
 {
     std::string method;
     unsigned ncommand; // порядковый номер метода(команды) в списке команд
@@ -12,6 +12,6 @@ struct request_string
     std::string prot_version;
 };
 
-int parse_request_start_string( std::string req, struct request_string &res );
+int parse_query_start_string( std::string req, struct query_string &res );
 
-#endif // REQUESTPARSER_H
+#endif // QUERYPARSER_H

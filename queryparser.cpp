@@ -1,21 +1,21 @@
 #include <iostream>
 #include <regex>
-#include "requestparser.h"
+#include "queryparser.h"
 
 using namespace std;
-
-//  Валидатор для URI ( https://tools.ietf.org/html/rfc3986#appendix-B )
-// URI = scheme ":" hier-part [ "?" query ] [ "#" fragment ]
-// ^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?
-static std::regex URI_regex("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
 
 // Разбор строки запроса
 // Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
 // например: GET  /web-programming/index.html  HTTP/1.1
 // мы будем обрабатывать только GET и POST
 // возвращаем 0, если успешно, -1 - ошибка. Результат разбора - в структуре res
-int parse_request_start_string( std::string req, struct request_string &res )
+int parse_query_start_string( std::string req, struct query_string &res )
 {
+//  Валидатор для URI ( https://tools.ietf.org/html/rfc3986#appendix-B )
+// URI = scheme ":" hier-part [ "?" query ] [ "#" fragment ]
+// ^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?
+    std::regex URI_regex("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
+// список методов(команд) сервера. Все команды кроме GET и POST обрабатываются как ошибочные
     std::string methods[] = { "GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "TRACE", "LINK", "OPTIONS", "UNLINK" };
     std::string lexem;  // текущая лексема для разбора
     size_t k;   // номер анализируемого символа в строке запроса
@@ -56,7 +56,7 @@ int parse_request_start_string( std::string req, struct request_string &res )
 
     while( isspace( req[k] ) ) k++;    // пропускаем пустые символы после команды
     if( k<req.length() ) req.erase(0, k);    // удаляем их вместе с разобранной командой
-    for( k=0; !isspace( req[k] ); k++ );    // k - индекс разделителя
+    for( k=0; !isspace( req[k] ); k++ );    // считаем символы до разделителя
     if( k>=req.length() )   // сплошная строка символов вместо URI
     {
         cerr<< "Bad request: protocol absent"<< endl;
@@ -77,5 +77,21 @@ int parse_request_start_string( std::string req, struct request_string &res )
     }
     res.uri = lexem;
 
+    while( isspace( req[k] ) ) k++;    // пропускаем пустые символы после команды
+    if( k<req.length() ) req.erase(0, k);    // удаляем их вместе с URI. В запросе остался только протокол
+// проверяем протокол
+    if( req.find( "HTTP/1.") == std::string::npos )     // протокол не HTTP/1
+    {
+        cerr<< "Bad request: wrong protocol "<< req<<endl;
+        return -1;
+    }
+    if( !req[7] || req[7] != '0' ) // версия протокола не 1.0
+    {
+        cerr<< "Bad request: wrong protocol version 1."<< req[7]<<endl;
+        return -1;
+    }
+    res.prot_version = req;
+
+//    cout<<"start line OK"<<endl;
     return 0;
 }
