@@ -1,5 +1,7 @@
 #ifndef QUERYPARSER_H
 #define QUERYPARSER_H
+#include <list>
+#include <string>
 
 using namespace std;
 
@@ -13,5 +15,8 @@ struct query_string
 };
 
 int parse_query_start_string( std::string req, struct query_string &res );
+int parse_query_header( std::list<std::string>* header );
+int parse_query( int fd );
+bool ReadLine(int fd, char* line, ssize_t len);
 
 #endif // QUERYPARSER_H
