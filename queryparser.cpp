@@ -68,7 +68,7 @@ int parse_query_start_string( std::string req, struct query_string &res )
     for( k=0; !isspace( req[k] ); k++ );    // считаем символы до разделителя
     if( k>=req.length() )   // сплошная строка символов вместо URI
     {
-        cerr<< "Bad query: protocol absent"<< endl;
+        cerr<< "Bad query: missing protocol"<< endl;
         return -1;
     }
     lexem = req.substr(0, k);       // получили URI
@@ -168,7 +168,7 @@ int parse_query( int fd_in )
 
     query.clear();
     printf( "reading from file\n" );
-    while( ReadLine( fd_in, str, QUERY_MAX_LEN) )
+    while( ReadLine( fd_in, str, 42) )//QUERY_MAX_LEN) )
             query.push_back( str );
     res = 1;
     return parse_query_header( &query );
@@ -186,7 +186,7 @@ bool ReadLine(int fd, char* line, ssize_t len)
      ssize_t n;
      size_t i, un;
 
-     while( (pos=strchr(buffer, '\n')) == NULL )
+     while( (pos=strchr(buffer, '\n'))==nullptr )
      {
          n = read (fd, tmpbuf, 1024);
          if (n==0 || n==-1)
@@ -210,7 +210,7 @@ bool ReadLine(int fd, char* line, ssize_t len)
          un = static_cast<size_t>(len-1);
          memcpy(line, buffer, un);
          line[un+1] = '\0';
-         memmove( buffer, pos, bufferlen-un );  // остаток оставляем в буфере
+         memmove( buffer, buffer+un, bufferlen-un );  // остаток оставляем в буфере
          bufferlen -= un;
          buffer = static_cast<char*>( realloc(buffer, (bufferlen)*sizeof(char)) );
      }
