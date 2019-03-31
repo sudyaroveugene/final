@@ -10,13 +10,14 @@
 
 #define METHOD_GET 0
 #define QUERY_MAX_LEN 2048
+static struct query_string req;
 
 // Разбор строки запроса
 // Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
 // например: GET  /web-programming/index.html  HTTP/1.1
 // мы будем обрабатывать только GET и POST
 // возвращаем 0, если успешно, <0 - ошибка. Результат разбора - в структуре res
-int parse_query_start_string( std::string req, struct query_string &res )
+int parse_query_start_string( std::string query_start_str )
 {
 //  Валидатор для URI ( https://tools.ietf.org/html/rfc3986#appendix-B )
 // URI = scheme ":" hier-part [ "?" query ] [ "#" fragment ]
@@ -27,30 +28,30 @@ int parse_query_start_string( std::string req, struct query_string &res )
     std::string lexem;  // текущая лексема для разбора
     size_t k;   // номер анализируемого символа в строке запроса
 
-    if( req.empty() )   // пустой запрос
+    if( query_start_str.empty() )   // пустой запрос
     {
         cerr << "Bad query: empty query" << endl;
         return -1;
     }
-    for( k=0; isspace( req[k] ); k++ );    // считаем пустые символы в начале строки запроса
-    if( k ) req.erase(0, k);    // удаляем их
+    for( k=0; isspace( query_start_str[k] ); k++ );    // считаем пустые символы в начале строки запроса
+    if( k ) query_start_str.erase(0, k);    // удаляем их
 
-    for( k=0; !isspace( req[k] ); k++ );    // k - индекс первого разделителя
-    if( k>=req.length() )   // сплошная строка символов вместо команды
+    for( k=0; !isspace( query_start_str[k] ); k++ );    // k - индекс первого разделителя
+    if( k>=query_start_str.length() )   // сплошная строка символов вместо команды
     {
         cerr<< "Bad query: bad command"<< endl;
         return -1;
     }
 
-    lexem = req.substr(0, k);       // получили первую лексему
+    lexem = query_start_str.substr(0, k);       // получили первую лексему
     int l=1;
     for( size_t i=0; i<(sizeof(methods)/sizeof(methods[0])); i++ )
     {
         l = lexem.compare(methods[i]);  // ищем ее в списке методов (команд)
         if( l == 0 )
         {
-            res.method = methods[i];        // заносим найденую команду в результат
-            res.ncommand = static_cast<unsigned>(i);    // номер команды
+            req.method = methods[i];        // заносим найденую команду в результат
+            req.ncommand = static_cast<unsigned>(i);    // номер команды
             if( i>1 ) l=1;  // все команды кроме GET и POST не обрабатываем
             break;
         }
@@ -61,15 +62,15 @@ int parse_query_start_string( std::string req, struct query_string &res )
         return -501;
     }
 
-    while( isspace( req[k] ) ) k++;    // пропускаем пустые символы после команды
-    if( k<req.length() ) req.erase(0, k);    // удаляем их вместе с разобранной командой
-    for( k=0; !isspace( req[k] ); k++ );    // считаем символы до разделителя
-    if( k>=req.length() )   // сплошная строка символов вместо URI
+    while( isspace( query_start_str[k] ) ) k++;    // пропускаем пустые символы после команды
+    if( k<query_start_str.length() ) query_start_str.erase(0, k);    // удаляем их вместе с разобранной командой
+    for( k=0; !isspace( query_start_str[k] ); k++ );    // считаем символы до разделителя
+    if( k>=query_start_str.length() )   // сплошная строка символов вместо URI
     {
         cerr<< "Bad query: missing protocol"<< endl;
         return -1;
     }
-    lexem = req.substr(0, k);       // получили URI
+    lexem = query_start_str.substr(0, k);       // получили URI
     std::cmatch uri_group;      // массив строк с группами URI
 //	группа 2 — схема обращения к ресурсу (часто указывает на сетевой протокол), например http, ftp, file, ldap, mailto, urn
 //	группа 4 — источник=адрес сервера,
@@ -82,23 +83,22 @@ int parse_query_start_string( std::string req, struct query_string &res )
         cerr<< "Bad query: bad URI"<< endl;
         return -1;
     }
-    res.uri = lexem;
+    req.uri = lexem;
 
-    while( isspace( req[k] ) ) k++;    // пропускаем пустые символы после команды
-    if( k<req.length() ) req.erase(0, k);    // удаляем их вместе с URI. В запросе остался только протокол
+    while( isspace( query_start_str[k] ) ) k++;    // пропускаем пустые символы после команды
+    if( k<query_start_str.length() ) query_start_str.erase(0, k);    // удаляем их вместе с URI. В запросе остался только протокол
 // проверяем протокол
-    if( req.find( "HTTP/1.") == std::string::npos )     // протокол не HTTP/1
+    if( query_start_str.find( "HTTP/1.") == std::string::npos )     // протокол не HTTP/1
     {
-        cerr<< "Bad query: wrong protocol "<< req<<endl;
+        cerr<< "Bad query: wrong protocol "<< query_start_str<<endl;
         return -1;
     }
-    if( !req[7] || req[7] != '0' ) // версия протокола не 1.0
+    if( !query_start_str[7] || query_start_str[7] != '0' ) // версия протокола не 1.0
     {
-        cerr<< "Bad query: wrong protocol version 1."<< req[7]<<endl;
+        cerr<< "Bad query: wrong protocol version 1."<< query_start_str[7]<<endl;
         return -1;
     }
-    res.prot_version = req;
-    res.kepp_alive = false; // по умолчанию - не сохранять соединение
+    req.prot_version = query_start_str;
 
 //    cout<<"start line OK"<<endl;
     return 0;
@@ -112,7 +112,6 @@ int parse_query_start_string( std::string req, struct query_string &res )
 // возвращаем 0, если успешно, -1 - ошибка.
 int parse_query_header( std::list<std::string>* header )
 {
-    struct query_string req;
     int res;
 
     if( !header )
@@ -121,18 +120,21 @@ int parse_query_header( std::list<std::string>* header )
         return -1;
     }
 // разбираем стартовую строку
-    res = parse_query_start_string( header->front(), req );
+    res = parse_query_start_string( header->front() );
     if( res<0 )
         return res;  // ошибка в стартовой строке
     else    // печать для отладки
         cout << "command "<<req.ncommand<<"="<< req.method
              << " URI="<<req.uri<<" protocol="<<req.prot_version<< endl;
+
+    req.kepp_alive = false; // по умолчанию - не сохранять соединение
 // проверяем остальные строки заголовка
     auto i=header->begin();
     i++;
     while( i!=header->end() )
     {
         res = 0;
+        string tmp = i->data();
 // убираем из строки лишние пробелы: несколько пробелов подряд=один пробел
         for( auto cur_ch=i->begin(); cur_ch!=i->end(); cur_ch++ )
         {
@@ -165,11 +167,22 @@ int parse_query_header( std::list<std::string>* header )
                 return -1;
             }
         }
-//  присутствует параметр Connection : (Keep Alive?) - сохранять соединение
-        if( (i->find("connection")!=std::string::npos ) && (i->find("keep alive")!=std::string::npos) )
+//  присутствует параметр Connection : (Keep-Alive?) - сохранять соединение
+        if( (i->find("connection")!=std::string::npos ) && (i->find("keep-alive")!=std::string::npos) )
         {
             req.kepp_alive = true;
-            cout << "Connection: Keep Alive header found"<< endl;   // печать для отладки
+            cout << "Connection: Keep-Alive header found"<< endl;   // печать для отладки
+        }
+        size_t find_pos=i->find("keep-alive");
+        if( find_pos!=std::string::npos )   // ищем заголовок keep-alive
+        {
+            find_pos=i->find(":", find_pos+10);     // ишем ':' после заголовка
+            if( find_pos!=std::string::npos )
+            {
+                char *ch = const_cast<char*>(i->data()+find_pos+1); // указатель на след. символ
+                req.keep_alive_timeout = ::stoul( ch );     // преобразуем найденую строку в число
+                cout << "Keep-Alive timeout: "<< req.keep_alive_timeout<< " ms"<<endl;   // печать для отладки
+            }
         }
         i++;
     }
