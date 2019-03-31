@@ -1,10 +1,8 @@
 #include <iostream>
 #include <regex>
-#include <algorithm>
 #include <cctype>
 //#include <unistd.h>
 #include <io.h>
-#include <string.h>
 #include <stdlib.h>
 #include "queryparser.h"
 
@@ -17,7 +15,7 @@
 // Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
 // например: GET  /web-programming/index.html  HTTP/1.1
 // мы будем обрабатывать только GET и POST
-// возвращаем 0, если успешно, -1 - ошибка. Результат разбора - в структуре res
+// возвращаем 0, если успешно, <0 - ошибка. Результат разбора - в структуре res
 int parse_query_start_string( std::string req, struct query_string &res )
 {
 //  Валидатор для URI ( https://tools.ietf.org/html/rfc3986#appendix-B )
@@ -100,6 +98,7 @@ int parse_query_start_string( std::string req, struct query_string &res )
         return -1;
     }
     res.prot_version = req;
+    res.kepp_alive = false; // по умолчанию - не сохранять соединение
 
 //    cout<<"start line OK"<<endl;
     return 0;
@@ -121,12 +120,11 @@ int parse_query_header( std::list<std::string>* header )
         cerr<< "Bad header: NULL header"<<endl;
         return -1;
     }
-
 // разбираем стартовую строку
     res = parse_query_start_string( header->front(), req );
     if( res<0 )
         return res;  // ошибка в стартовой строке
-    else
+    else    // печать для отладки
         cout << "command "<<req.ncommand<<"="<< req.method
              << " URI="<<req.uri<<" protocol="<<req.prot_version<< endl;
 // проверяем остальные строки заголовка
@@ -134,44 +132,80 @@ int parse_query_header( std::list<std::string>* header )
     i++;
     while( i!=header->end() )
     {
-        if( i->find(':') == std::string::npos ) // в строке отсутствует двоеточие
+        res = 0;
+// убираем из строки лишние пробелы: несколько пробелов подряд=один пробел
+        for( auto cur_ch=i->begin(); cur_ch!=i->end(); cur_ch++ )
         {
-            i->pop_back();  // убираем превод строки
+            if( isspace(*cur_ch) )
+            {
+                auto next_ch=cur_ch+1;
+                while( next_ch!=i->end() && isspace(*next_ch) )
+                    i->erase(next_ch);
+            }
+// конвертируем текущую строку в нижний регистр
+            *cur_ch = static_cast<char>( tolower( *cur_ch ));
+            if( *cur_ch == ':' )
+                res = 1;
+        }
+        if( !res )   // в строке отсутствует двоеточие
+        {
+            i->pop_back();  // убираем пeревод строки для нормальной печати ошибки
             cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" will be ignored"<<endl;
             header->erase(i--);     // удаляем ошибочную строку из запроса
             i++;
             continue;
         }
-// конвертируем текущую строку в нижний регистр
-        std::transform( i->begin(), i->end(), i->begin(), ::tolower );
 //  присутствует параметр Content-Length или Transfer-Encoding - есть тело сообщения
         if( i->find("content-length")!=std::string::npos || i->find("transfer-encoding")!=std::string::npos )
         {
-            if( req.ncommand == METHOD_GET )
+            if( req.ncommand == METHOD_GET )    // если команда не GET, то это ошибочная команда
             {
                 i->pop_back();  // убираем превод строки
                 cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command"<<endl;
                 return -1;
             }
         }
+//  присутствует параметр Connection : (Keep Alive?) - сохранять соединение
+        if( (i->find("connection")!=std::string::npos ) && (i->find("keep alive")!=std::string::npos) )
+        {
+            req.kepp_alive = true;
+            cout << "Connection: Keep Alive header found"<< endl;   // печать для отладки
+        }
         i++;
     }
     return 0;
 }
 
-// длина строки запроса более 2000 - ошибка. Возврат сервера 414 (Request-URI Too Long)
-int parse_query( int fd_in )
+// длина строки запроса более 2000 - ошибка. Возврат сервера -414 (Request-URI Too Long)
+int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::string> &query_data )
 {
-    std::list<std::string> query;
     char str[QUERY_MAX_LEN+1];
-    ssize_t res;
+    int res = 0;
 
     query.clear();
+    query_data.clear();
     printf( "reading from file\n" );
-    while( ReadLine( fd_in, str, 42) )//QUERY_MAX_LEN) )
+    while( ReadLine( fd_in, str, QUERY_MAX_LEN) )
             query.push_back( str );
-    res = 1;
-    return parse_query_header( &query );
+// проверяем строки на наличие \n - если нет, то была слишком длинная строка и надо вернуть 414
+// если строка состоит только из \n, то дальше заголовок закончился, дальше идут данные
+    for( auto i=query.begin(); i!=query.end(); i++ )
+    {
+        if( i->back()!='\n' )
+        {
+            cerr<< "Bad header: Request-URI too large\n"<<i->data()<< endl;
+            return -414;
+        }
+        if( i->length()==1 )    // строка только из '\n'
+        {
+            query_data.splice( query_data.begin(), query, i, query.end() ); // перемещаем все последующие элементы в список data
+            query_data.pop_front();     // убираем строку только из '\n'
+            break;  // уходим из цикла, т.к. i теперь неопределено
+        }
+    }
+    res = parse_query_header( &query );
+
+    return res;
 }
 
 // We read-ahead, so we store in static buffer
