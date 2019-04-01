@@ -113,6 +113,7 @@ int parse_query_start_string( std::string query_start_str )
 int parse_query_header( std::list<std::string>* header )
 {
     int res;
+    size_t find_pos;
 
     if( !header )
     {
@@ -157,15 +158,43 @@ int parse_query_header( std::list<std::string>* header )
             i++;
             continue;
         }
-//  присутствует параметр Content-Length или Transfer-Encoding - есть тело сообщения
-        if( i->find("content-length")!=std::string::npos || i->find("transfer-encoding")!=std::string::npos )
+//  присутствует параметр Content-Length - есть тело сообщения
+        find_pos = i->find("content-length");
+        if( find_pos==0 ) // строка начинается с
         {
             if( req.ncommand == METHOD_GET )    // если команда не GET, то это ошибочная команда
             {
                 i->pop_back();  // убираем превод строки
-                cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command"<<endl;
-                return -1;
+                cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command ignored"<<endl;
+                header->erase(i--);     // удаляем ошибочную строку из запроса
+                i++;
+                continue;
             }
+            find_pos=i->find(":", find_pos+14);     // ищем ':' после заголовка
+            if( find_pos!=std::string::npos )
+            {
+                char *ch = const_cast<char*>(i->data()+find_pos+1); // указатель на след. символ
+                req.content_length = ::stoul( ch );     // преобразуем найденую строку в число
+                cout << "Content-length: "<< req.content_length<<endl;   // печать для отладки
+            }
+            else
+            {
+                i->pop_back();  // убираем превод строки
+                cerr<< "Bad header: incorrect parameter Content-Lengt without value ignored"<<endl;
+                header->erase(i--);     // удаляем ошибочную строку из запроса
+                i++;
+                continue;
+            }
+        }
+//  присутствует параметр Transfer-Encoding - есть тело сообщения
+        if( (i->find("transfer-encoding")==0) && req.ncommand==METHOD_GET )
+        {
+                // если команда не GET, то это ошибочная команда
+            i->pop_back();  // убираем превод строки
+            cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command ignored"<<endl;
+            header->erase(i--);     // удаляем ошибочную строку из запроса
+            i++;
+            continue;
         }
 //  присутствует параметр Connection : (Keep-Alive?) - сохранять соединение
         if( (i->find("connection")!=std::string::npos ) && (i->find("keep-alive")!=std::string::npos) )
@@ -173,8 +202,8 @@ int parse_query_header( std::list<std::string>* header )
             req.kepp_alive = true;
             cout << "Connection: Keep-Alive header found"<< endl;   // печать для отладки
         }
-        size_t find_pos=i->find("keep-alive");
-        if( find_pos!=std::string::npos )   // ищем заголовок keep-alive
+        find_pos=i->find("keep-alive");
+        if( find_pos==0 )   // ищем заголовок keep-alive
         {
             find_pos=i->find(":", find_pos+10);     // ишем ':' после заголовка
             if( find_pos!=std::string::npos )
@@ -193,10 +222,12 @@ int parse_query_header( std::list<std::string>* header )
 int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::string> &query_data )
 {
     char str[QUERY_MAX_LEN+1];
+    size_t data_length = 0;
     int res = 0;
 
     query.clear();
     query_data.clear();
+    req.clear();
     printf( "reading from file\n" );
     while( ReadLine( fd_in, str, QUERY_MAX_LEN) )
             query.push_back( str );
@@ -217,7 +248,35 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
         }
     }
     res = parse_query_header( &query );
-
+    if( req.content_length )    // проверяем длину данных на соответствие
+    {
+        for( auto i: query_data )
+            data_length += i.length();
+        if( data_length>req.content_length )
+        {
+            size_t dif = data_length - req.content_length;
+            auto i=query_data.back();   // идем с конца
+            while( dif>0 )
+            {
+                if( i.length()>dif )   // режем строку на разницу в размерах
+                {
+                    query_data.back().resize(i.length()-dif);
+                    break;
+                }
+                else    // длины одной строки не хватает
+                {
+                    dif -= i.length();
+                    query_data.pop_back();  // удаляем строку
+                    i = query_data.back();  // и переходим к предыдущей
+                }
+            }
+        }
+    }
+// отладка
+    for( auto i: query_data )
+        cout<<i.data();
+    cout<<endl;
+//
     return res;
 }
 

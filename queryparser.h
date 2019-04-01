@@ -14,6 +14,12 @@ struct query_string
     std::string prot_version;
     bool kepp_alive;    // сохранять или нет соединение
     unsigned keep_alive_timeout;    // время ожидания в мс
+    unsigned content_length;
+
+    void clear( void )
+    {
+        method.clear(); ncommand=100; uri.clear(); prot_version.clear(); keep_alive_timeout=0; kepp_alive=false; content_length=0;
+    }
 };
 
 int parse_query_start_string( std::string query_start_str );
