@@ -1,8 +1,11 @@
 #include <iostream>
 #include <regex>
 #include <cctype>
-//#include <unistd.h>
+#if defined(__linux__)
+#include <unistd.h>
+#else
 #include <io.h>
+#endif
 #include <stdlib.h>
 #include "queryparser.h"
 
@@ -100,7 +103,7 @@ int parse_query_start_string( std::string query_start_str )
     }
     req.prot_version = query_start_str;
 
-//    cout<<"start line OK"<<endl;
+//    printf("start line OK"<<endl;
     return 0;
 }
 
@@ -231,6 +234,7 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
     printf( "reading from file\n" );
     while( ReadLine( fd_in, str, QUERY_MAX_LEN) )
             query.push_back( str );
+
 // проверяем строки на наличие \n - если нет, то была слишком длинная строка и надо вернуть 414
 // если строка состоит только из \n, то дальше заголовок закончился, дальше идут данные
     for( auto i=query.begin(); i!=query.end(); i++ )
@@ -240,13 +244,21 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
             cerr<< "Bad header: Request-URI too large\n"<<i->data()<< endl;
             return -414;
         }
-        if( i->length()==1 )    // строка только из '\n'
+
+        string cmp_str;
+#if defined(__linux__)
+        cmp_str="\r\n";
+#else
+        cmp_str="\n";
+#endif
+        if( i->compare(cmp_str)==0 )    // строка только из '\n'
         {
             query_data.splice( query_data.begin(), query, i, query.end() ); // перемещаем все последующие элементы в список data
             query_data.pop_front();     // убираем строку только из '\n'
             break;  // уходим из цикла, т.к. i теперь неопределено
         }
     }
+
     res = parse_query_header( &query );
     if( req.content_length )    // проверяем длину данных на соответствие
     {
@@ -274,8 +286,8 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
     }
 // отладка
     for( auto i: query_data )
-        cout<<i.data();
-    cout<<endl;
+        printf("%s",i.data());
+    printf("\n");
 //
     return res;
 }
