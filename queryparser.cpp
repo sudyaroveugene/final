@@ -12,8 +12,6 @@
 //using namespace std;
 
 #define METHOD_GET 0
-#define QUERY_MAX_LEN 2048
-static struct query_string req;
 
 // Разбор строки запроса
 // Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
@@ -62,7 +60,8 @@ int parse_query_start_string( std::string query_start_str )
     if( l )
     {
         cerr<<"Bad query: Not Implemented "<< lexem<<endl;
-        return -501;
+        req.ret_code = 501;
+        return -1;
     }
 
     while( isspace( query_start_str[k] ) ) k++;    // пропускаем пустые символы после команды
@@ -98,7 +97,8 @@ int parse_query_start_string( std::string query_start_str )
     }
     if( !query_start_str[7] || query_start_str[7] != '0' ) // версия протокола не 1.0
     {
-        cerr<< "Bad query: wrong protocol version 1."<< query_start_str[7]<<endl;
+        cerr<< "Bad query: HTTP Version Not Supported 1."<< query_start_str[7]<<endl;
+        req.ret_code = 505;
         return -1;
     }
     req.prot_version = query_start_str;
@@ -118,7 +118,7 @@ int parse_query_header( std::list<std::string>* header )
     int res;
     size_t find_pos;
 
-    if( !header )
+    if( !header || header->size()==0 )
     {
         cerr<< "Bad header: NULL header"<<endl;
         return -1;
@@ -225,63 +225,95 @@ int parse_query_header( std::list<std::string>* header )
 int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::string> &query_data )
 {
     char str[QUERY_MAX_LEN+1];
-    size_t data_length = 0;
+    size_t data_length = 0, header_size = 0;
     int res = 0;
+    string cmp_str;
+    bool newstring = true;
 
-    query.clear();
-    query_data.clear();
-    req.clear();
-    printf( "reading from file\n" );
-    while( ReadLine( fd_in, str, QUERY_MAX_LEN) )
-            query.push_back( str );
-
-// проверяем строки на наличие \n - если нет, то была слишком длинная строка и надо вернуть 414
-// если строка состоит только из \n, то дальше заголовок закончился, дальше идут данные
-    for( auto i=query.begin(); i!=query.end(); i++ )
-    {
-        if( i->back()!='\n' )
-        {
-            cerr<< "Bad header: Request-URI too large\n"<<i->data()<< endl;
-            return -414;
-        }
-
-        string cmp_str;
+// определяем строку-разделитель
 #if defined(__linux__)
         cmp_str="\r\n";
 #else
         cmp_str="\n";
 #endif
-        if( i->compare(cmp_str)==0 )    // строка только из '\n'
+
+    query.clear();
+    query_data.clear();
+    req.clear();
+    printf( "reading from file\n" );    // отладка
+    while( (data_length=ReadLine( fd_in, str, 30)))//QUERY_MAX_LEN)) )
+    {
+        header_size += data_length;
+        if( header_size > MAX_HEADER_SIZE )
         {
-            query_data.splice( query_data.begin(), query, i, query.end() ); // перемещаем все последующие элементы в список data
-            query_data.pop_front();     // убираем строку только из '\n'
-            break;  // уходим из цикла, т.к. i теперь неопределено
+            cerr<< "Bad header: Entity Too Large\n"<< endl;
+            req.ret_code = 413;
+            return -1;
+        }
+        if( newstring ) // если предыдущая строка заканчивается переводом строки
+            query.push_back( str ); // то создаем новую строку
+        else
+            query.back().append( str ); // иначе добавляем в последнюю
+        newstring = str[data_length-1] == '\n'; // прочитанная строка кончается переводом строки? true
+        if( query.back().length() > QUERY_MAX_LEN ) // длина строки очень большая, разбираться не будем
+        {
+            cerr<< "Bad header: Request-URI too large\n"<<query.back().data()<< endl;
+            req.ret_code = 414;
+            return -1;
+        }
+        if( cmp_str.compare( query.back() )==0 )    // строка только из '\n'
+        {
+            query.pop_back();   // удаляем ее
+            if( query.size() == 0 )
+                continue;   // пустая строка вначале - пропускаем ее
+            else
+                break;  // заголовок есть - уходим из цикла, дальше должны быть данные
         }
     }
-
+//  разбираем заголовки
+    if( query.size() == 0 )
+        return -1;  // заголовок отсутствует
     res = parse_query_header( &query );
-    if( req.content_length )    // проверяем длину данных на соответствие
+    if( res<0 ) return -1;  // неверный заголовок
+// если в запросе есть данные - читаем их
+    if( req.content_length )
     {
-        for( auto i: query_data )
-            data_length += i.length();
-        if( data_length>req.content_length )
+        size_t len_to_read = req.content_length>DATA_STRING_LEN? DATA_STRING_LEN: req.content_length;   // сколько будем читать
+        header_size = 0;    // тут будем накапливать кол-во прочитанных данных
+// сначала читаем из буфера уже принятые данные: в ReadLine параметр flush=1
+        do
         {
-            size_t dif = data_length - req.content_length;
-            auto i=query_data.back();   // идем с конца
-            while( dif>0 )
+            if( header_size+len_to_read > req.content_length )  // если хотим прочитать больше
+                len_to_read = req.content_length - header_size;
+            if( !len_to_read )  // все данные прочли
+                break;
+            if( (data_length=ReadLine( fd_in, str, static_cast<ssize_t>(len_to_read+1), 1 )) )
             {
-                if( i.length()>dif )   // режем строку на разницу в размерах
-                {
-                    query_data.back().resize(i.length()-dif);
-                    break;
-                }
-                else    // длины одной строки не хватает
-                {
-                    dif -= i.length();
-                    query_data.pop_back();  // удаляем строку
-                    i = query_data.back();  // и переходим к предыдущей
-                }
+                header_size += data_length;
+                query_data.push_back( str ); // создаем новую строку
             }
+        } while( data_length ); // пока буфер не пуст
+
+        do  // дальше читаем из сокета
+        {
+            if( header_size+len_to_read > req.content_length )  // если хотим прочитать больше
+                len_to_read = req.content_length - header_size;
+            if( !len_to_read )  // все данные прочли
+                break;
+            if( (res=read( fd_in, str, static_cast<unsigned>(len_to_read+1) ))>0 )
+            {
+                header_size += static_cast<size_t>(res);
+                str[res] = '\0';
+                query_data.push_back( str ); // создаем новую строку
+            }
+            if( res==-1 && errno==EAGAIN ) // нет доступных данных и сокет нв режиме O_NONBLOCK
+                res = 1;        // пусть читает заново
+        } while( res>=0 ); // пока буфер не пуст
+
+        if( query_data.size()==0 )
+        {
+            cerr<< "Bad query: Missing query data "<<req.content_length<<" bytes"<<endl;
+            return -1;
         }
     }
 // отладка
@@ -289,12 +321,13 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
         printf("%s",i.data());
     printf("\n");
 //
-    return res;
+    return 0;
 }
 
 // We read-ahead, so we store in static buffer
 // what we already read, but not yet returned by ReadLine.
-bool ReadLine(int fd, char* line, ssize_t len)
+// если flush<>0, чтения файла не производится, возвращаются уже прочитанные данные
+size_t ReadLine(int fd, char* line, ssize_t len, int flush)
 {
      static char *buffer = static_cast<char*>(malloc(1025*sizeof(char)));
      static size_t bufferlen=0;
@@ -302,32 +335,40 @@ bool ReadLine(int fd, char* line, ssize_t len)
 // Do the real reading from fd until buffer has '\n'.
      char *pos;
      ssize_t n;
-     size_t i, un;
+     size_t un; //, i;  // unsigned значение n, шоб 100 раз не преобразовывать
 
-     while( (pos=strchr(buffer, '\n'))==nullptr )
+     if( !line || !len )
+         return 0;
+     if( flush )
+         pos=buffer+bufferlen-1;
+     else
      {
-         n = read (fd, tmpbuf, 1024);
-         if (n==0 || n==-1)
-         {  // handle errors
-             bufferlen=0;
-             buffer = static_cast<char*>( realloc(buffer, sizeof(char)) );
-             buffer[0] = '\0';
-             line = buffer;
-             return false;
+         while( (pos=strchr(buffer, '\n'))==nullptr )
+         {
+             n = read (fd, tmpbuf, 1024);
+             if (n==0 || n==-1)
+             {  // handle errors
+                 bufferlen=0;
+                 buffer = static_cast<char*>( realloc(buffer, sizeof(char)) );
+                 buffer[0] = '\0';
+                 line = buffer;
+                 return 0;
+             }
+             un = static_cast<size_t>(n);
+             tmpbuf[un] = '\0';
+             buffer = static_cast<char*>( realloc(buffer, (bufferlen+un)*sizeof(char)) );
+             memcpy( buffer+bufferlen, tmpbuf, un );
+//             for( i=0; i<un; i++ )
+//                 buffer[bufferlen+i] = tmpbuf[i];
+             bufferlen += un;
          }
-         un = static_cast<size_t>(n);
-         tmpbuf[un] = '\0';
-         buffer = static_cast<char*>( realloc(buffer, (bufferlen+un)*sizeof(char)) );
-         for( i=0; i<un; i++ )
-             buffer[bufferlen+i] = tmpbuf[i];
-         bufferlen += un;
      }
 // Split the buffer around '\n' found and return first part.
      if( (pos-buffer+1)>=len ) // полученная срока больше буфера для чтения
      {  // возвращаем то, что влезет
          un = static_cast<size_t>(len-1);
          memcpy(line, buffer, un);
-         line[un+1] = '\0';
+         line[un] = '\0';
          memmove( buffer, buffer+un, bufferlen-un );  // остаток оставляем в буфере
          bufferlen -= un;
          buffer = static_cast<char*>( realloc(buffer, (bufferlen)*sizeof(char)) );
@@ -350,5 +391,5 @@ bool ReadLine(int fd, char* line, ssize_t len)
              buffer[0] = '\0';
          }
      }
-     return true;
+     return un;
 }
