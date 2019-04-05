@@ -29,7 +29,7 @@ int main()
         }
         if( fd_in<0 )
         {
-            fd_in = open( "query.in", O_RDWR
+            fd_in = open( "query.in", O_RDWR | O_BINARY
             #if defined(__linux__)
                                                 | O_NONBLOCK
             #endif

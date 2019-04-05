@@ -13,6 +13,14 @@
 
 #define METHOD_GET 0
 
+void poprn( string& str )
+{
+    if( str.back() == '\n' )
+        str.pop_back();
+    if( str.back() == '\r' )
+        str.pop_back();
+}
+
 // Разбор строки запроса
 // Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
 // например: GET  /web-programming/index.html  HTTP/1.1
@@ -145,7 +153,7 @@ int parse_query_header( std::list<std::string>* header )
             if( isspace(*cur_ch) )
             {
                 auto next_ch=cur_ch+1;
-                while( next_ch!=i->end() && isspace(*next_ch) )
+                while( next_ch!=i->end() && isspace(*next_ch) && !(*cur_ch=='\r' && *next_ch=='\n') )
                     i->erase(next_ch);
             }
 // конвертируем текущую строку в нижний регистр
@@ -155,7 +163,7 @@ int parse_query_header( std::list<std::string>* header )
         }
         if( !res )   // в строке отсутствует двоеточие
         {
-            i->pop_back();  // убираем пeревод строки для нормальной печати ошибки
+            poprn( *i );  // убираем пeревод строки для нормальной печати ошибки
             cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" will be ignored"<<endl;
             header->erase(i--);     // удаляем ошибочную строку из запроса
             i++;
@@ -167,7 +175,7 @@ int parse_query_header( std::list<std::string>* header )
         {
             if( req.ncommand == METHOD_GET )    // если команда не GET, то это ошибочная команда
             {
-                i->pop_back();  // убираем превод строки
+                poprn( *i );  // убираем превод строки
                 cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command ignored"<<endl;
                 header->erase(i--);     // удаляем ошибочную строку из запроса
                 i++;
@@ -182,7 +190,7 @@ int parse_query_header( std::list<std::string>* header )
             }
             else
             {
-                i->pop_back();  // убираем превод строки
+                poprn( *i );  // убираем превод строки
                 cerr<< "Bad header: incorrect parameter Content-Lengt without value ignored"<<endl;
                 header->erase(i--);     // удаляем ошибочную строку из запроса
                 i++;
@@ -193,7 +201,7 @@ int parse_query_header( std::list<std::string>* header )
         if( (i->find("transfer-encoding")==0) && req.ncommand==METHOD_GET )
         {
                 // если команда не GET, то это ошибочная команда
-            i->pop_back();  // убираем превод строки
+            poprn( *i );  // убираем превод строки
             cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command ignored"<<endl;
             header->erase(i--);     // удаляем ошибочную строку из запроса
             i++;
@@ -227,21 +235,21 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
     char str[QUERY_MAX_LEN+1];
     size_t data_length = 0, header_size = 0;
     int res = 0;
-    string cmp_str;
+//    string cmp_str;
     bool newstring = true;
 
 // определяем строку-разделитель
-#if defined(__linux__)
-        cmp_str="\r\n";
-#else
-        cmp_str="\n";
-#endif
+//#if defined(__linux__)
+//        cmp_str="\r\n";
+//#else
+//        cmp_str="\n";
+//#endif
 
     query.clear();
     query_data.clear();
     req.clear();
     printf( "reading from file\n" );    // отладка
-    while( (data_length=ReadLine( fd_in, str, 30)))//QUERY_MAX_LEN)) )
+    while( (data_length=ReadLine( fd_in, str, QUERY_MAX_LEN)) )
     {
         header_size += data_length;
         if( header_size > MAX_HEADER_SIZE )
@@ -261,7 +269,7 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
             req.ret_code = 414;
             return -1;
         }
-        if( cmp_str.compare( query.back() )==0 )    // строка только из '\n'
+        if( (query.back().compare("\n") )==0 || (query.back().compare("\r\n") )==0 )    // строка только из '\n'
         {
             query.pop_back();   // удаляем ее
             if( query.size() == 0 )
@@ -300,15 +308,17 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
                 len_to_read = req.content_length - header_size;
             if( !len_to_read )  // все данные прочли
                 break;
-            if( (res=read( fd_in, str, static_cast<unsigned>(len_to_read+1) ))>0 )
+            if( (res=read( fd_in, str, static_cast<unsigned>(len_to_read) ))>0 )
             {
                 header_size += static_cast<size_t>(res);
+//                if( static_cast<size_t>(res)!=len_to_read )
+//                    newstring=false;
                 str[res] = '\0';
                 query_data.push_back( str ); // создаем новую строку
             }
             if( res==-1 && errno==EAGAIN ) // нет доступных данных и сокет нв режиме O_NONBLOCK
                 res = 1;        // пусть читает заново
-        } while( res>=0 ); // пока буфер не пуст
+        } while( res>0 ); // пока буфер не пуст
 
         if( query_data.size()==0 )
         {
@@ -317,9 +327,9 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
         }
     }
 // отладка
-    for( auto i: query_data )
-        printf("%s",i.data());
-    printf("\n");
+//    for( auto i: query_data )
+//        printf("%s",i.data());
+//    printf("\n");
 //
     return 0;
 }
