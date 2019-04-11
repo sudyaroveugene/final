@@ -17,14 +17,17 @@ struct query_string
     unsigned ncommand; // порядковый номер метода(команды) в списке команд
     std::string uri;
     std::string prot_version;
+    std::string content_type;
     bool kepp_alive;    // сохранять или нет соединение
-    unsigned keep_alive_timeout;    // время ожидания в мс
+    unsigned keep_alive_timeout;    // время ожидания в секундах
     unsigned content_length;
     unsigned ret_code;      // код состояния для возврата, по умолчанию - 500=ошибка сервера
 
     void clear( void )
     {
         method.clear(); ncommand=100; uri.clear(); prot_version.clear(); keep_alive_timeout=0; kepp_alive=false; content_length=0; ret_code=500;
+        content_type="text/plain; charset=us-ascii";
+//  kepp_alive=false для HTTP 1.0
     }
 };
 

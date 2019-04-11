@@ -8,7 +8,7 @@ project(final)
 
 #find_library(PTHREAD_LIBRARY pthread)
 
-add_executable(${PROJECT_NAME} main.cpp queryparser.cpp queryparser.h prepanswer.cpp prepanswer.h )
+add_executable(${PROJECT_NAME} main.cpp queryparser.cpp queryparser.h prepresponse.cpp prepresponse.h )
 set(EXECUTABLE_OUTPUT_PATH "./final")
 
 #target_link_libraries(${PTHREAD_LIBRARY})

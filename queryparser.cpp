@@ -137,13 +137,13 @@ int parse_query_header( std::list<std::string>* header )
         return res;  // ошибка в стартовой строке
     else    // печать для отладки
         cout << "command "<<req.ncommand<<"="<< req.method
-             << " URI="<<req.uri<<" protocol="<<req.prot_version<< endl;
+             << " URI="<<req.uri<<" protocol="<<req.prot_version;
 
     req.kepp_alive = false; // по умолчанию - не сохранять соединение
 // проверяем остальные строки заголовка
     auto i=header->begin();
     i++;
-    while( i!=header->end() )
+    for( ; i!=header->end(); i++ )
     {
         res = 0;
         string tmp = i->data();
@@ -158,8 +158,14 @@ int parse_query_header( std::list<std::string>* header )
             }
 // конвертируем текущую строку в нижний регистр
             *cur_ch = static_cast<char>( tolower( *cur_ch ));
-            if( *cur_ch == ':' )
+// ищем в строке двоеточие
+            if( *cur_ch==':' && cur_ch!=i->begin() )    // двоеточие не может быть в начале строки
+            {
                 res = 1;
+                auto prev_ch=cur_ch-1;
+                if( isspace(*prev_ch) ) // если перед двоеточием пробел, то убираем его
+                    i->erase(prev_ch);
+            }
         }
         if( !res )   // в строке отсутствует двоеточие
         {
@@ -169,42 +175,43 @@ int parse_query_header( std::list<std::string>* header )
             i++;
             continue;
         }
-//  присутствует параметр Content-Length - есть тело сообщения
-        find_pos = i->find("content-length");
-        if( find_pos==0 ) // строка начинается с
+//  присутствует параметр Content-Length - размер тела сообщения
+        if( (i->find("content-length:"))==0 ) // строка начинается с
         {
-            if( req.ncommand == METHOD_GET )    // если команда не GET, то это ошибочная команда
-            {
-                poprn( *i );  // убираем превод строки
-                cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command ignored"<<endl;
-                header->erase(i--);     // удаляем ошибочную строку из запроса
-                i++;
-                continue;
-            }
-            find_pos=i->find(":", find_pos+14);     // ищем ':' после заголовка
-            if( find_pos!=std::string::npos )
-            {
-                char *ch = const_cast<char*>(i->data()+find_pos+1); // указатель на след. символ
-                req.content_length = ::stoul( ch );     // преобразуем найденую строку в число
-                cout << "Content-length: "<< req.content_length<<endl;   // печать для отладки
-            }
-            else
-            {
-                poprn( *i );  // убираем превод строки
-                cerr<< "Bad header: incorrect parameter Content-Lengt without value ignored"<<endl;
-                header->erase(i--);     // удаляем ошибочную строку из запроса
-                i++;
-                continue;
-            }
+            char *ch = const_cast<char*>(i->data()+15); // указатель на след. символ
+            req.content_length = ::stoul( ch );     // преобразуем найденую строку в число
+            cout << "Content-length: "<< req.content_length<<endl;   // печать для отладки
+            continue;
         }
-//  присутствует параметр Transfer-Encoding - есть тело сообщения
-        if( (i->find("transfer-encoding")==0) && req.ncommand==METHOD_GET )
+
+//  присутствует параметр Content-Encoding - есть тело сообщения, способ его кодировки
+//        if( (i->find("content-encoding")==0) )
+//        {
+//  распознавать способ конвертирования сообщения не будем
+//  варианты "7bit", "quoted-printable", "base64", "8bit", "binary" и пр.
+//        }
+//  присутствует параметр Content-Type
+        if( (i->find("content-type:")==0) )
         {
-                // если команда не GET, то это ошибочная команда
-            poprn( *i );  // убираем превод строки
-            cerr<< "Bad header: incorrect parameter \""<< i->data()<<"\" with GET command ignored"<<endl;
-            header->erase(i--);     // удаляем ошибочную строку из запроса
-            i++;
+// варианты: "application", "audio", "image", "text", "video", и др.
+            std::string types[] { "application", "audio", "image", "text", "video" };
+            bool found = false;
+            for( auto content_type: types )
+            {
+                find_pos = i->find( content_type.data(), 13, content_type.length());
+                if( find_pos!=std::string::npos )
+                {
+                    found = true;
+                    req.content_type = i->substr( find_pos );
+                }
+            }
+            if( !found )
+            {
+                req.ret_code = 501;
+                poprn( *i );  // убираем превод строки
+                cerr<< "Bad header: Not Implemented \""<< i->data()<<"\""<<endl;
+                return -1;
+            }
             continue;
         }
 //  присутствует параметр Connection : (Keep-Alive?) - сохранять соединение
@@ -212,19 +219,30 @@ int parse_query_header( std::list<std::string>* header )
         {
             req.kepp_alive = true;
             cout << "Connection: Keep-Alive header found"<< endl;   // печать для отладки
+            continue;
         }
-        find_pos=i->find("keep-alive");
-        if( find_pos==0 )   // ищем заголовок keep-alive
+        if( i->find("keep-alive:")==0 )   // ищем заголовок keep-alive
         {
-            find_pos=i->find(":", find_pos+10);     // ишем ':' после заголовка
+            find_pos=i->find("timeout=", 11);     // ищем timeout после заголовка
             if( find_pos!=std::string::npos )
             {
-                char *ch = const_cast<char*>(i->data()+find_pos+1); // указатель на след. символ
+                char *ch = const_cast<char*>(i->data()+find_pos+8); // указатель на след. символ после '='
                 req.keep_alive_timeout = ::stoul( ch );     // преобразуем найденую строку в число
-                cout << "Keep-Alive timeout: "<< req.keep_alive_timeout<< " ms"<<endl;   // печать для отладки
+                cout << "Keep-Alive timeout: "<< req.keep_alive_timeout<< " s"<<endl;   // печать для отладки
+            }
+            else    // таймаут в старом формате - просто число после двоеточия
+            {
+                res = 1;
+                for( auto ch = i->data()+11; *ch!='\0'; ch++ ) // проверяем, что после двоеточия есть число
+                    if( !isdigit(*ch) && !isspace(*ch) )
+                    {
+                        res = 0;
+                        break;
+                    }
+                if( res )   // есть
+                    req.keep_alive_timeout = ::stoul( (i->data()+11) );     // преобразуем найденую строку в число
             }
         }
-        i++;
     }
     return 0;
 }
@@ -235,20 +253,12 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
     char str[QUERY_MAX_LEN+1];
     size_t data_length = 0, header_size = 0;
     int res = 0;
-//    string cmp_str;
     bool newstring = true;
-
-// определяем строку-разделитель
-//#if defined(__linux__)
-//        cmp_str="\r\n";
-//#else
-//        cmp_str="\n";
-//#endif
 
     query.clear();
     query_data.clear();
     req.clear();
-    printf( "reading from file\n" );    // отладка
+    printf( "\nreading from file\n" );    // отладка
     while( (data_length=ReadLine( fd_in, str, QUERY_MAX_LEN)) )
     {
         header_size += data_length;
@@ -281,8 +291,10 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
 //  разбираем заголовки
     if( query.size() == 0 )
         return -1;  // заголовок отсутствует
+
     res = parse_query_header( &query );
     if( res<0 ) return -1;  // неверный заголовок
+
 // если в запросе есть данные - читаем их
     if( req.content_length )
     {
