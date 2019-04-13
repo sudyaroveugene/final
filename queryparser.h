@@ -1,35 +1,18 @@
 #ifndef QUERYPARSER_H
 #define QUERYPARSER_H
+
 #include <list>
-#include <string>
+#include "query.h"
 
 using namespace std;
 
 #define QUERY_MAX_LEN 2048      // максимальная длина URI
 #define MAX_HEADER_SIZE 8192    // максимальный размер для заголовка, включая стартовую строку
-#define DATA_STRING_LEN 1024    // будем хранить данные в строках такого размера. Данное число должно быть меньше QUERY_MAX_LEN-1
+#define DATA_STRING_LEN 76      // будем хранить данные в строках такого размера
 
-// Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
-//
-struct query_string
-{
-    std::string method;
-    unsigned ncommand; // порядковый номер метода(команды) в списке команд
-    std::string uri;
-    std::string prot_version;
-    std::string content_type;
-    bool kepp_alive;    // сохранять или нет соединение
-    unsigned keep_alive_timeout;    // время ожидания в секундах
-    unsigned content_length;
-    unsigned ret_code;      // код состояния для возврата, по умолчанию - 500=ошибка сервера
-
-    void clear( void )
-    {
-        method.clear(); ncommand=100; uri.clear(); prot_version.clear(); keep_alive_timeout=0; kepp_alive=false; content_length=0; ret_code=500;
-        content_type="text/plain; charset=us-ascii";
-//  kepp_alive=false для HTTP 1.0
-    }
-};
+// в формате base64
+                                // для кодированной в base64 строки максимальная длина 76 символов минус <CR><LF>
+                                // 54/3*4 = 72 + CRLF = 74 <76
 
 extern struct query_string req;
 

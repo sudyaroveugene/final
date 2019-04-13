@@ -42,7 +42,7 @@ int main()
             }
         }
         res = parse_query( fd_in, query, query_data );    // получаем запрос
-        if( res<0 )
+        if( res == -2 )    // на входе нет запросов
             break;
         prepare_response( response, response_data );      // подготавливаем ответ
         if( fd_out<0 )

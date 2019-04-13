@@ -11,8 +11,6 @@
 
 //using namespace std;
 
-#define METHOD_GET 0
-
 void poprn( string& str )
 {
     if( str.back() == '\n' )
@@ -33,7 +31,7 @@ int parse_query_start_string( std::string query_start_str )
 // ^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\?([^#]*))?(#(.*))?
     std::regex URI_regex("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
 // список методов(команд) сервера. Все команды кроме GET и POST обрабатываются как ошибочные
-    std::string methods[] = { "GET", "POST", "HEAD", "PUT", "PATCH", "DELETE", "TRACE", "LINK", "OPTIONS", "UNLINK" };
+    std::string methods[] = { "GET", "POST" };//, "HEAD", "PUT", "PATCH", "DELETE", "TRACE", "LINK", "OPTIONS", "UNLINK" };
     std::string lexem;  // текущая лексема для разбора
     size_t k;   // номер анализируемого символа в строке запроса
 
@@ -59,8 +57,8 @@ int parse_query_start_string( std::string query_start_str )
         l = lexem.compare(methods[i]);  // ищем ее в списке методов (команд)
         if( l == 0 )
         {
-            req.method = methods[i];        // заносим найденую команду в результат
-            req.ncommand = static_cast<unsigned>(i);    // номер команды
+            req.method_name = methods[i];        // заносим найденую команду в результат
+            req.method_num = static_cast<unsigned>(i);    // номер команды
             if( i>1 ) l=1;  // все команды кроме GET и POST не обрабатываем
             break;
         }
@@ -109,7 +107,6 @@ int parse_query_start_string( std::string query_start_str )
         req.ret_code = 505;
         return -1;
     }
-    req.prot_version = query_start_str;
 
 //    printf("start line OK"<<endl;
     return 0;
@@ -136,8 +133,7 @@ int parse_query_header( std::list<std::string>* header )
     if( res<0 )
         return res;  // ошибка в стартовой строке
     else    // печать для отладки
-        cout << "command "<<req.ncommand<<"="<< req.method
-             << " URI="<<req.uri<<" protocol="<<req.prot_version;
+        cout << "command "<<req.method_num<<"="<< req.method_name << " URI="<<req.uri;
 
     req.kepp_alive = false; // по умолчанию - не сохранять соединение
 // проверяем остальные строки заголовка
@@ -188,13 +184,12 @@ int parse_query_header( std::list<std::string>* header )
 //        if( (i->find("content-encoding")==0) )
 //        {
 //  распознавать способ конвертирования сообщения не будем
-//  варианты "7bit", "quoted-printable", "base64", "8bit", "binary" и пр.
 //        }
 //  присутствует параметр Content-Type
         if( (i->find("content-type:")==0) )
         {
 // варианты: "application", "audio", "image", "text", "video", и др.
-            std::string types[] { "application", "audio", "image", "text", "video" };
+            std::string types[] { "image", "text" };    // будем обрабатывать только текст и картинки
             bool found = false;
             for( auto content_type: types )
             {
@@ -248,7 +243,8 @@ int parse_query_header( std::list<std::string>* header )
 }
 
 // длина строки запроса более 2000 - ошибка. Возврат сервера -414 (Request-URI Too Long)
-int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::string> &query_data )
+// возвращает -2, если запроса нет; -1 если произошла ошибка; 0 - все в порядке
+int parse_query( int fd_in, std::list<std::string> &query, std::list<std::string> &query_data )
 {
     char str[QUERY_MAX_LEN+1];
     size_t data_length = 0, header_size = 0;
@@ -290,7 +286,7 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
     }
 //  разбираем заголовки
     if( query.size() == 0 )
-        return -1;  // заголовок отсутствует
+        return -2;  // заголовок отсутствует
 
     res = parse_query_header( &query );
     if( res<0 ) return -1;  // неверный заголовок
@@ -346,6 +342,15 @@ int parse_query( int fd_in,  std::list<std::string> &query, std::list<std::strin
     return 0;
 }
 
+// вспомогательная функция поиска символа в буфере ограниченной длины
+char* buf_strchr( char* buffer, char ch, size_t bufferlen )
+{
+    for( size_t un=0; un<bufferlen; un++)
+        if( buffer[un] == ch )
+            return buffer+un;
+    return nullptr;
+}
+
 // We read-ahead, so we store in static buffer
 // what we already read, but not yet returned by ReadLine.
 // если flush<>0, чтения файла не производится, возвращаются уже прочитанные данные
@@ -365,7 +370,7 @@ size_t ReadLine(int fd, char* line, ssize_t len, int flush)
          pos=buffer+bufferlen-1;
      else
      {
-         while( (pos=strchr(buffer, '\n'))==nullptr )
+         while( (pos=buf_strchr(buffer, '\n', bufferlen)) ==nullptr )
          {
              n = read (fd, tmpbuf, 1024);
              if (n==0 || n==-1)
