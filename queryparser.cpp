@@ -24,7 +24,7 @@ void poprn( string& str )
 // например: GET  /web-programming/index.html  HTTP/1.1
 // мы будем обрабатывать только GET и POST
 // возвращаем 0, если успешно, <0 - ошибка. Результат разбора - в структуре res
-int parse_query_start_string( std::string query_start_str )
+int parse_query_start_string( std::string query_start_str, struct query_string &req )
 {
 //  Валидатор для URI ( https://tools.ietf.org/html/rfc3986#appendix-B )
 // URI = scheme ":" hier-part [ "?" query ] [ "#" fragment ]
@@ -40,7 +40,7 @@ int parse_query_start_string( std::string query_start_str )
         cerr << "Bad query: empty query" << endl;
         return -1;
     }
-    for( k=0; isspace( query_start_str[k] ); k++ );    // считаем пустые символы в начале строки запроса
+    for( k=0; query_start_str[k]<0 || isspace( query_start_str[k] ); k++ );    // считаем пустые символы в начале строки запроса
     if( k ) query_start_str.erase(0, k);    // удаляем их
 
     for( k=0; !isspace( query_start_str[k] ); k++ );    // k - индекс первого разделителя
@@ -91,7 +91,15 @@ int parse_query_start_string( std::string query_start_str )
         cerr<< "Bad query: bad URI"<< endl;
         return -1;
     }
-    req.uri = lexem;
+    string quer = uri_group[7].str();
+    string frag = uri_group[9].str();
+    if( uri_group[7].length() || uri_group[9].length() )
+    {
+        req.ret_code = 501;
+        cerr<< "Bad query: Not Implemented "<<req.method_name<<" with query or fragment expressions in URI"<<endl;
+        return -1;
+    }
+    req.uri = uri_group[5].str();
 
     while( isspace( query_start_str[k] ) ) k++;    // пропускаем пустые символы после команды
     if( k<query_start_str.length() ) query_start_str.erase(0, k);    // удаляем их вместе с URI. В запросе остался только протокол
@@ -108,7 +116,6 @@ int parse_query_start_string( std::string query_start_str )
         return -1;
     }
 
-//    printf("start line OK"<<endl;
     return 0;
 }
 
@@ -118,7 +125,7 @@ int parse_query_start_string( std::string query_start_str )
 // получаем заголовок в виде ссылки на вектор строк
 // так как заголовки мы не используем, то просто проверяем на верность структуру заголовка
 // возвращаем 0, если успешно, -1 - ошибка.
-int parse_query_header( std::list<std::string>* header )
+int parse_query_header( std::list<std::string>* header, struct query_string& req )
 {
     int res;
     size_t find_pos;
@@ -129,11 +136,11 @@ int parse_query_header( std::list<std::string>* header )
         return -1;
     }
 // разбираем стартовую строку
-    res = parse_query_start_string( header->front() );
+    res = parse_query_start_string( header->front(), req );
     if( res<0 )
         return res;  // ошибка в стартовой строке
-    else    // печать для отладки
-        cout << "command "<<req.method_num<<"="<< req.method_name << " URI="<<req.uri;
+//    else    // печать для отладки
+//        cout << "command "<<req.method_num<<"="<< req.method_name << " URI="<<req.uri<<endl;
 
     req.kepp_alive = false; // по умолчанию - не сохранять соединение
 // проверяем остальные строки заголовка
@@ -176,7 +183,7 @@ int parse_query_header( std::list<std::string>* header )
         {
             char *ch = const_cast<char*>(i->data()+15); // указатель на след. символ
             req.content_length = ::stoul( ch );     // преобразуем найденую строку в число
-            cout << "Content-length: "<< req.content_length<<endl;   // печать для отладки
+//            cout << "Content-length: "<< req.content_length<<endl;   // печать для отладки
             continue;
         }
 
@@ -203,7 +210,7 @@ int parse_query_header( std::list<std::string>* header )
             if( !found )
             {
                 req.ret_code = 501;
-                poprn( *i );  // убираем превод строки
+                poprn( *i );  // убираем пeревод строки
                 cerr<< "Bad header: Not Implemented \""<< i->data()<<"\""<<endl;
                 return -1;
             }
@@ -213,7 +220,7 @@ int parse_query_header( std::list<std::string>* header )
         if( (i->find("connection")!=std::string::npos ) && (i->find("keep-alive")!=std::string::npos) )
         {
             req.kepp_alive = true;
-            cout << "Connection: Keep-Alive header found"<< endl;   // печать для отладки
+//            cout << "Connection: Keep-Alive header found"<< endl;   // печать для отладки
             continue;
         }
         if( i->find("keep-alive:")==0 )   // ищем заголовок keep-alive
@@ -223,7 +230,7 @@ int parse_query_header( std::list<std::string>* header )
             {
                 char *ch = const_cast<char*>(i->data()+find_pos+8); // указатель на след. символ после '='
                 req.keep_alive_timeout = ::stoul( ch );     // преобразуем найденую строку в число
-                cout << "Keep-Alive timeout: "<< req.keep_alive_timeout<< " s"<<endl;   // печать для отладки
+//                cout << "Keep-Alive timeout: "<< req.keep_alive_timeout<< " s"<<endl;   // печать для отладки
             }
             else    // таймаут в старом формате - просто число после двоеточия
             {
@@ -244,7 +251,7 @@ int parse_query_header( std::list<std::string>* header )
 
 // длина строки запроса более 2000 - ошибка. Возврат сервера -414 (Request-URI Too Long)
 // возвращает -2, если запроса нет; -1 если произошла ошибка; 0 - все в порядке
-int parse_query( int fd_in, std::list<std::string> &query, std::list<std::string> &query_data )
+int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data, struct query_string &req )
 {
     char str[QUERY_MAX_LEN+1];
     size_t data_length = 0, header_size = 0;
@@ -254,7 +261,6 @@ int parse_query( int fd_in, std::list<std::string> &query, std::list<std::string
     query.clear();
     query_data.clear();
     req.clear();
-    printf( "\nreading from file\n" );    // отладка
     while( (data_length=ReadLine( fd_in, str, QUERY_MAX_LEN)) )
     {
         header_size += data_length;
@@ -288,12 +294,13 @@ int parse_query( int fd_in, std::list<std::string> &query, std::list<std::string
     if( query.size() == 0 )
         return -2;  // заголовок отсутствует
 
-    res = parse_query_header( &query );
+    res = parse_query_header( &query, req );
     if( res<0 ) return -1;  // неверный заголовок
 
 // если в запросе есть данные - читаем их
     if( req.content_length )
     {
+        std::vector<uint8_t> str_vec(DATA_STRING_LEN);
         size_t len_to_read = req.content_length>DATA_STRING_LEN? DATA_STRING_LEN: req.content_length;   // сколько будем читать
         header_size = 0;    // тут будем накапливать кол-во прочитанных данных
 // сначала читаем из буфера уже принятые данные: в ReadLine параметр flush=1
@@ -306,7 +313,9 @@ int parse_query( int fd_in, std::list<std::string> &query, std::list<std::string
             if( (data_length=ReadLine( fd_in, str, static_cast<ssize_t>(len_to_read+1), 1 )) )
             {
                 header_size += data_length;
-                query_data.push_back( str ); // создаем новую строку
+                str_vec.resize( data_length );
+                memcpy( str_vec.data(), str, data_length );
+                query_data.push_back( str_vec ); // создаем новую строку
             }
         } while( data_length ); // пока буфер не пуст
 
@@ -318,11 +327,11 @@ int parse_query( int fd_in, std::list<std::string> &query, std::list<std::string
                 break;
             if( (res=read( fd_in, str, static_cast<unsigned>(len_to_read) ))>0 )
             {
-                header_size += static_cast<size_t>(res);
-//                if( static_cast<size_t>(res)!=len_to_read )
-//                    newstring=false;
-                str[res] = '\0';
-                query_data.push_back( str ); // создаем новую строку
+                size_t ures = static_cast<size_t>(res);
+                header_size += ures;
+                str_vec.resize( ures );
+                memcpy( str_vec.data(), str, ures );
+                query_data.push_back( str_vec ); // создаем новую строку
             }
             if( res==-1 && errno==EAGAIN ) // нет доступных данных и сокет нв режиме O_NONBLOCK
                 res = 1;        // пусть читает заново
@@ -334,11 +343,7 @@ int parse_query( int fd_in, std::list<std::string> &query, std::list<std::string
             return -1;
         }
     }
-// отладка
-//    for( auto i: query_data )
-//        printf("%s",i.data());
-//    printf("\n");
-//
+
     return 0;
 }
 
@@ -385,8 +390,6 @@ size_t ReadLine(int fd, char* line, ssize_t len, int flush)
              tmpbuf[un] = '\0';
              buffer = static_cast<char*>( realloc(buffer, (bufferlen+un)*sizeof(char)) );
              memcpy( buffer+bufferlen, tmpbuf, un );
-//             for( i=0; i<un; i++ )
-//                 buffer[bufferlen+i] = tmpbuf[i];
              bufferlen += un;
          }
      }

@@ -8,7 +8,7 @@ using namespace std;
 
 extern struct query_string req;
 
-int prepare_response( std::list<std::string> &response, std::list<std::string> &response_data );
-int send_response( int fd_out, std::list<std::string> &response, std::list<std::string> &response_data );
+int prepare_response( std::list<std::string> &response, data_type &response_data, struct query_string &req );
+int send_response( int fd_out, std::list<std::string> &response, data_type &response_data );
 
 #endif // PREPRESPONSE_H

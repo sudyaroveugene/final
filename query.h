@@ -2,6 +2,8 @@
 #define QUERY_H
 
 #include <string>
+#include <list>
+#include <vector>
 
 // Строка запроса выглядит так: <Метод> <URI> <HTTP/Версия протокола>
 //
@@ -18,13 +20,19 @@ struct query_string
 
     void clear( void )
     {
-        method_name.clear(); method_num=100; uri.clear(); keep_alive_timeout=0; kepp_alive=false; content_length=0; ret_code=200;
-        content_type="text/html; charset=utf-8";
+        method_name.clear(); method_num=100; uri.clear(); keep_alive_timeout=30; kepp_alive=true; content_length=0; ret_code=200;
+        content_type="text/html; charset=utf-8\r\n";
 //  kepp_alive=false для HTTP 1.0
     }
 };
 
 #define METHOD_GET 0
 #define METHOD_POST 1
+#define DATA_STRING_LEN 76      // будем хранить данные в строках такого размера
+// в формате base64
+                                // для кодированной в base64 строки максимальная длина 76 символов минус <CR><LF>
+                                // 54/3*4 = 72 + CRLF = 74 <76
+
+typedef std::list< std::vector<uint8_t>> data_type;
 
 #endif // QUERY_H
