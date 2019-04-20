@@ -2,8 +2,10 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <stdio.h>
+#include <memory.h>
 
 #include "prepresponse.h"
+extern FILE* log_file;
 
 int prepare_response( std::list<std::string> &response, data_type &response_data, struct query_string &req )
 {
@@ -55,8 +57,11 @@ int prepare_response( std::list<std::string> &response, data_type &response_data
 // проверяем полученный путь
     ssize_t n = 0;
     mode_t mode = 0;     // режим чтения файла
-    if( req.content_type.find("image")!=std::string::npos )
-        mode |= O_BINARY;   // для картинок - двоичный
+//    if( req.content_type.find("image")!=std::string::npos )
+#if defined(__linux__)
+#else
+    mode |= O_BINARY;   // для картинок - двоичный
+#endif
 
 // по запросу GET будем отдавать файл целиком. Частичные запросы и запросы с параметрами не обрабатываем
     if( req.method_num == METHOD_GET )
@@ -101,12 +106,17 @@ int prepare_response( std::list<std::string> &response, data_type &response_data
 // POST - изменение заданного файла
     else if( req.method_num == METHOD_POST )
     {
-        mode |= (O_RDWR | O_CREAT | O_TRUNC) ;     // режим файла - чтение/запись
+        bool create_new = false;
+        mode |= O_RDONLY;     // режим файла - чтение
         int fd = open( cwd.data(), mode, 0666 );  // пробуем открыть файл
+        if( fd<0 )  //  файл не найден, будем создавать новый - будет другой код возврата
+            create_new = true;
+        mode |= (O_RDWR | O_CREAT | O_TRUNC) ;     // режим файла - чтение/запись
+        fd = open( cwd.data(), mode, 0666 );  // пробуем открыть файл
         if( fd<0 )  //  файл не найден
         {
             cwd = "Error open " + cwd;
-            perror( cwd.data() );
+            fprintf( log_file, "%s: \"%s\"\n", cwd.data(), strerror(errno));
             req.ret_code = 404;
 //            response.front().pop_back();
             response.front().append( " 404 Not Found\r\n" );
@@ -131,19 +141,25 @@ int prepare_response( std::list<std::string> &response, data_type &response_data
         if( beg == req.content_length )    //  если все записали
         {
             response.push_back( "Content-Type:"+req.content_type );
-            response.push_back( "Content-Length:");
+            response.push_back( "Content-Length: ");
             sprintf( buffer, "%u\r\n", req.content_length );
-            response.push_back( buffer );
+            response.back().append( buffer );
         }
         else
         {
             cwd = "Error writing " + cwd;
-            perror( cwd.data() );
+            fprintf( log_file, "%s: \"%s\"\n", cwd.data(), strerror(errno));
             req.ret_code = 500;
 //            response.front().pop_back();
             response.front().append( " 500 Internal Server Error\r\n" );
         }
-        response.front().append( " 200 OK\r\n");
+        if( create_new )
+        {
+            response.push_back( "Location: "+cwd+"\r\n" );
+            response.front().append( " 201 Created\r\n");
+        }
+        else
+            response.front().append( " 200 OK\r\n");
     }
     else
     {
