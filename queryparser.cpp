@@ -247,6 +247,7 @@ int parse_query_header( std::list<std::string>* header, struct query_string& req
 
 // длина строки запроса более 2000 - ошибка. Возврат сервера -414 (Request-URI Too Long)
 // возвращает -2, если запроса нет; -1 если произошла ошибка; 0 - все в порядке
+// -3 получен сигнал завершения "shutdown server"
 int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data, struct query_string &req )
 {
     char str[QUERY_MAX_LEN+1];
@@ -291,7 +292,8 @@ int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data
     if( query.size() == 0 )
         return -2;  // заголовок отсутствует
 
-//    if( un>0 && line[un-1]=='\r' ) line[un-1] = '\0';  // если строка кончается на \r\n, то зануляем оба символа
+    if( query.front().compare( "shutdown server" )==0 )
+        return -3;  // получена команда завершения работы
 
     res = parse_query_header( &query, req );
     if( res<0 ) return -1;  // неверный заголовок
@@ -324,7 +326,8 @@ int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data
                 len_to_read = req.content_length - header_size;
             if( !len_to_read )  // все данные прочли
                 break;
-            if( (res=read( fd_in, str, static_cast<unsigned>(len_to_read) ))>0 )
+//            if( (res=read( fd_in, str, static_cast<unsigned>(len_to_read) ))>0 )
+            if( (res=recv( fd_in, str, static_cast<unsigned>(len_to_read), MSG_NOSIGNAL ))>0 )
             {
                 size_t ures = static_cast<size_t>(res);
                 header_size += ures;
@@ -376,7 +379,8 @@ size_t ReadLine(int fd, char* line, ssize_t len, int flush)
      {
          while( (pos=buf_strchr(buffer, '\n', bufferlen)) ==nullptr )
          {
-             n = read (fd, tmpbuf, 1024);
+//             n = read(fd, tmpbuf, 1024);
+             n = recv(fd, tmpbuf, 1024, MSG_NOSIGNAL );
              if (n==0 || n==-1)
              {  // handle errors
                  bufferlen=0;

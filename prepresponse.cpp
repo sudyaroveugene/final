@@ -174,14 +174,18 @@ int send_response( int fd_out, std::list<std::string> &response, data_type &resp
         return -1;
 
     for( auto i: response )
-        write( fd_out, i.data(), static_cast<unsigned>(i.length()) );
+//        write( fd_out, i.data(), static_cast<unsigned>(i.length()) );
+        send( fd_out, i.data(), static_cast<unsigned>(i.length()), MSG_NOSIGNAL );
 
-    write( fd_out, "\r\n", 2 );
+//    write( fd_out, "\r\n", 2 );
+    send( fd_out, "\r\n", 2, MSG_NOSIGNAL );
     if( !response_data.empty() )
     {
         for( auto i: response_data )
-            write( fd_out, i.data(), static_cast<unsigned>(i.size()) );
-        write( fd_out, "\r\n", 2 );
+//            write( fd_out, i.data(), static_cast<unsigned>(i.size()) );
+//        write( fd_out, "\r\n", 2 );
+            send( fd_out, i.data(), static_cast<unsigned>(i.size()), MSG_NOSIGNAL );
+        send( fd_out, "\r\n", 2, MSG_NOSIGNAL );
     }
     return 0;
 }
