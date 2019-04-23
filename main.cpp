@@ -276,7 +276,7 @@ int main( int argc, char** argv )
             exit( 1 );
         }
 
-        if( (chdir(current_dir)) < 0) /* Изменяем текущий рабочий каталог */
+        if( (chdir(current_dir.data())) < 0) /* Изменяем текущий рабочий каталог */
         {
             perror( "chdir" );
             exit( 1 );
