@@ -2,6 +2,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <signal.h>
+#include <stdio.h>
 #if defined(__linux__)
 #include <sys/socket.h>
 #include <netinet/in.h>
