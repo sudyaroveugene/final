@@ -3,6 +3,9 @@
 #include <sys/file.h>
 #include <stdio.h>
 #include <memory.h>
+#if defined(__linux__)
+#include <sys/socket.h>
+#endif
 
 #include "prepresponse.h"
 extern FILE* log_file;

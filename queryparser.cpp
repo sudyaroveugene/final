@@ -3,6 +3,9 @@
 #include <cctype>
 #include <unistd.h>
 #include <stdlib.h>
+#if defined(__linux__)
+#include <sys/socket.h>
+#endif
 #include "queryparser.h"
 
 extern FILE* log_file;
@@ -102,6 +105,7 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
 // проверяем протокол
     if( query_start_str.find( "HTTP/1.") == std::string::npos )     // протокол не HTTP/1
     {
+        poprn( query_start_str );
         fprintf( log_file, "Bad query: wrong protocol \"%s\"\n", query_start_str.data() );
         return -1;
     }
@@ -292,7 +296,7 @@ int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data
     if( query.size() == 0 )
         return -2;  // заголовок отсутствует
 
-    if( query.front().compare( "shutdown server" )==0 )
+    if( query.front().find( "shutdown server" )==0 )
         return -3;  // получена команда завершения работы
 
     res = parse_query_header( &query, req );
