@@ -9,6 +9,7 @@
 
 #include "prepresponse.h"
 extern FILE* log_file;
+extern std::string current_dir; // рабочий каталог
 
 int prepare_response( std::list<std::string> &response, data_type &response_data, struct query_string &req )
 {
@@ -39,7 +40,7 @@ int prepare_response( std::list<std::string> &response, data_type &response_data
         return 0;
     }
 
-    std::string cwd = getcwd( nullptr, 0 );     // читаем рабочий каталог
+    std::string cwd = current_dir;     // читаем рабочий каталог
 // выделяем расширение файла из content_type
 //    std::string ext = ".";
     size_t beg = req.content_type.find( '/' )+1;
