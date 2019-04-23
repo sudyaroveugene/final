@@ -144,7 +144,7 @@ int server()
                 shutdown( client_socket_fd, SHUT_RDWR );
                 close(client_socket_fd); //--естествено закрываем сокет
 //                cout<<"tut4 res="<<res<<endl;
-                fprintf( log_file, "[Server] Client %d closed\n" );
+                fprintf( log_file, "[Server] Client %d closed\n", pid );
                 fflush( log_file );
                 exit( res ); //--гасим дочерний процесс
             }
@@ -163,7 +163,7 @@ int server()
         sleep( 1 );
         if( ret==3 ) // получена команда завершения сервера
         {
-            fprintf( log_file, "[Server] Shutdown server received\n", pid );
+            fprintf( log_file, "[Server] Shutdown server received\n" );
             shutdown( master_socket, SHUT_RDWR );
             close( master_socket );
             for( auto i: child_pid )
