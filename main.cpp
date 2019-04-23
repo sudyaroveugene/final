@@ -284,7 +284,7 @@ int main( int argc, char** argv )
             exit( 1 );
         }
 
-        if( (chdir("/home/box/")) < 0) /* Изменяем текущий рабочий каталог */
+        if( (chdir("/home/box")) < 0) /* Изменяем текущий рабочий каталог */
         {
             perror( "chdir" );
             exit( 1 );
