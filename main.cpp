@@ -276,13 +276,13 @@ int main( int argc, char** argv )
             exit( 1 );
         }
 
-        if( (chdir("/home/box")) < 0) /* Изменяем текущий рабочий каталог */
+        if( (chdir(current_dir)) < 0) /* Изменяем текущий рабочий каталог */
         {
             perror( "chdir" );
             exit( 1 );
         }
     // открываем файл лога
-        log_file = fopen( "final.log", "wb" /*"a" */);
+        log_file = fopen( "/home/box/final.log", "wb" /*"a" */);
         if( log_file==nullptr )
         {
             perror( "Error open final.log");
