@@ -270,6 +270,17 @@ int main( int argc, char** argv )
     else       // child
     {
         umask(0);   /* Изменяем файловую маску */
+        if( setsid()<0 )    /* Создание нового SID для дочернего процесса */
+        {
+            perror( "setsid");
+            exit( 1 );
+        }
+
+        if( (chdir("/home/box")) < 0) /* Изменяем текущий рабочий каталог */
+        {
+            perror( "chdir" );
+            exit( 1 );
+        }
     // открываем файл лога
         log_file = fopen( "final.log", "wb" /*"a" */);
         if( log_file==nullptr )
@@ -278,18 +289,7 @@ int main( int argc, char** argv )
             exit( 1 );
         }
         fprintf( log_file, "current_dir=%s port=%s ip_addr=%s\n", current_dir.data(), port.data(), ip_addr.data() );
-        if( setsid()<0 )    /* Создание нового SID для дочернего процесса */
-        {
-            perror( "setsid");
-            exit( 1 );
-        }
-
-        if( (chdir("/tmp")) < 0) /* Изменяем текущий рабочий каталог */
-        {
-            perror( "chdir" );
-            exit( 1 );
-        }
-        /* Закрываем стандартные файловые дескрипторы */
+    /* Закрываем стандартные файловые дескрипторы */
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
         close(STDERR_FILENO);
