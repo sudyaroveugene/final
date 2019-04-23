@@ -177,9 +177,10 @@ int send_response( int fd_out, std::list<std::string> &response, data_type &resp
         return -1;
 
     for( auto i: response )
-//        write( fd_out, i.data(), static_cast<unsigned>(i.length()) );
+    {
+        fprintf( log_file,"%s", i.data() );
         send( fd_out, i.data(), static_cast<unsigned>(i.length()), MSG_NOSIGNAL );
-
+    }
 //    write( fd_out, "\r\n", 2 );
     send( fd_out, "\r\n", 2, MSG_NOSIGNAL );
     if( !response_data.empty() )

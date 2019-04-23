@@ -37,7 +37,7 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
     if( query_start_str.empty() )   // пустой запрос
     {
         fprintf( log_file, "Bad query: empty\n");
-        return -1;
+        return 1;
     }
     for( k=0; query_start_str[k]<0 || isspace( query_start_str[k] ); k++ );    // считаем пустые символы в начале строки запроса
     if( k ) query_start_str.erase(0, k);    // удаляем их
@@ -46,7 +46,7 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
     if( k>=query_start_str.length() )   // сплошная строка символов вместо команды
     {
         fprintf( log_file, "Bad query: bad command\n" );
-        return -1;
+        return 1;
     }
 
     lexem = query_start_str.substr(0, k);       // получили первую лексему
@@ -66,7 +66,7 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
     {
         fprintf( log_file, "Bad query: Not Implemented \"%s\"\n", lexem.data() );
         req.ret_code = 501;
-        return -1;
+        return 1;
     }
 
     while( isspace( query_start_str[k] ) ) k++;    // пропускаем пустые символы после команды
@@ -75,7 +75,7 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
     if( k>=query_start_str.length() )   // сплошная строка символов вместо URI
     {
         fprintf( log_file, "Bad query: missing protocol\n" );
-        return -1;
+        return 1;
     }
     lexem = query_start_str.substr(0, k);       // получили URI
     std::cmatch uri_group;      // массив строк с группами URI
@@ -88,7 +88,7 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
     if( !l )
     {
         fprintf( log_file, "Bad query: bad URI\n" );
-        return -1;
+        return 1;
     }
     string quer = uri_group[7].str();
     string frag = uri_group[9].str();
@@ -96,7 +96,7 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
     {
         req.ret_code = 501;
         fprintf( log_file, "Bad query: Not Implemented \"%s\" with query or fragment expressions in URI\n", req.method_name.data() );
-        return -1;
+        return 1;
     }
     req.uri = uri_group[5].str();
 
@@ -107,13 +107,13 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
     {
         poprn( query_start_str );
         fprintf( log_file, "Bad query: wrong protocol \"%s\"\n", query_start_str.data() );
-        return -1;
+        return 1;
     }
     if( !query_start_str[7] || query_start_str[7] != '0' ) // версия протокола не 1.0
     {
         fprintf( log_file, "Bad query: HTTP Version Not Supported 1.%c\n", query_start_str[7] );
         req.ret_code = 505;
-        return -1;
+        return 1;
     }
 
     return 0;
@@ -133,14 +133,14 @@ int parse_query_header( std::list<std::string>* header, struct query_string& req
     if( !header || header->size()==0 )
     {
         fprintf( log_file, "Bad header: NULL header" );
-        return -1;
+        return 1;
     }
 // разбираем стартовую строку
     res = parse_query_start_string( header->front(), req );
-    if( res<0 )
+    if( res>0 )
         return res;  // ошибка в стартовой строке
-    else    // печать для отладки
-        fprintf( log_file, "command %d=%s URI=%s\n", req.method_num, req.method_name.data(), req.uri.data() );
+//    else    // печать для отладки
+//        fprintf( log_file, "command %d=%s URI=%s\n", req.method_num, req.method_name.data(), req.uri.data() );
 
     req.kepp_alive = false; // по умолчанию - не сохранять соединение
 // проверяем остальные строки заголовка
@@ -212,7 +212,7 @@ int parse_query_header( std::list<std::string>* header, struct query_string& req
                 req.ret_code = 501;
                 poprn( *i );  // убираем пeревод строки
                 fprintf( log_file, "Bad header: Not Implemented \"%s\"\n", i->data() );
-                return -1;
+                return 1;
             }
             continue;
         }
@@ -250,14 +250,15 @@ int parse_query_header( std::list<std::string>* header, struct query_string& req
 }
 
 // длина строки запроса более 2000 - ошибка. Возврат сервера -414 (Request-URI Too Long)
-// возвращает -2, если запроса нет; -1 если произошла ошибка; 0 - все в порядке
-// -3 получен сигнал завершения "shutdown server"
+// возвращает 2, если запроса нет; 1 если произошла ошибка; 0 - все в порядке
+// 3 получен сигнал завершения "shutdown server"
 int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data, struct query_string &req )
 {
     char str[QUERY_MAX_LEN+1];
     size_t data_length = 0, header_size = 0;
     int res = 0;
     bool newstring = true;
+    bool empty_string = false;
 
     query.clear();
     query_data.clear();
@@ -270,7 +271,7 @@ int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data
         {
             fprintf( log_file, "Bad header: Entity Too Large\n" );
             req.ret_code = 413;
-            return -1;
+            return 1;
         }
         if( newstring ) // если предыдущая строка заканчивается переводом строки
             query.push_back( str ); // то создаем новую строку
@@ -281,26 +282,39 @@ int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data
         {
             fprintf( log_file, "Bad header: Request-URI too large\n \"%s\"\n", query.back().data() );
             req.ret_code = 414;
-            return -1;
+            return 1;
         }
         if( (query.back().compare("\n") )==0 || (query.back().compare("\r\n") )==0 )    // строка только из '\n'
-        {
+        {                
             query.pop_back();   // удаляем ее
             if( query.size() == 0 )
+            {
+//                cout<<"empty string in begin"<<endl;
                 continue;   // пустая строка вначале - пропускаем ее
-            else
+            }
+            else    // не вначале
+            {
+//                if( empty_string )  // вторая подряд пустая строка -
+//                cout<<"empty string in query - break input"<<endl;
                 break;  // заголовок есть - уходим из цикла, дальше должны быть данные
+            }
         }
+        else
+            empty_string = false;
     }
 //  разбираем заголовки
     if( query.size() == 0 )
-        return -2;  // заголовок отсутствует
+    {
+//        cout<<"Not header in input"<<endl;
+        return 2;  // заголовок отсутствует
+    }
 
-    if( query.front().find( "shutdown server" )==0 )
-        return -3;  // получена команда завершения работы
-
+    if( query.front().find( "shutdown server" )!=std::string::npos )
+    {
+        return 3;  // получена команда завершения работы
+    }
     res = parse_query_header( &query, req );
-    if( res<0 ) return -1;  // неверный заголовок
+    if( res>0 ) return 1;  // неверный заголовок
 
 // если в запросе есть данные - читаем их
     if( req.content_length )
@@ -346,9 +360,11 @@ int parse_query( int fd_in, std::list<std::string> &query, data_type &query_data
         if( query_data.size()==0 )
         {
             fprintf( log_file, "Bad query: Missing query data %u bytes", req.content_length );
-            return -1;
+            return 1;
         }
     }
+    for( auto i: query )
+        fprintf( log_file,"%s", i.data() );
 
     return 0;
 }

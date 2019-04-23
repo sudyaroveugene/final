@@ -24,6 +24,7 @@ int set_nonblock( int fd )
 #if defined (O_NONBLOCK)
     if( -1==(flags=fcntl( fd, F_GETFL, 0)))
         flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 #else
     flags = 1;
     return ioctl( fd, FIOBIO, &flags );
@@ -33,6 +34,7 @@ int set_nonblock( int fd )
 FILE *log_file;
 std::string ip_addr, current_dir, port; // в этих строках будут параметры из командной строки IP-адрес сервера, рабочий каталог и порт
 struct sockaddr_in client_name;//--структура sockaddr_in клиентской машины (параметры ее нам неизвестны.
+int ret = 0;
                                 // Мы не знаем какая машина к нам будет подключаться)
 unsigned int client_name_size = sizeof(client_name);//--размер структуры (тоже пока неизвестен)
 int client_socket_fd;          //--идентификатор клиентского сокета
@@ -48,10 +50,11 @@ int request( int fd )
 //    response.clear();
     do {
         res = parse_query( fd, query, query_data, req );    // получаем запрос
-        if( res<0  )    // на входе нет запросов
-            return res;  // не нуль
+        if( res>1  )    // 1 - ошибка, 2 - на входе нет запросов, 3 - выключить сервер
+            return res;  // ошибку игнорируем, остальное - выходим
         prepare_response( response, query_data, req );      // подготавливаем ответ
         send_response( fd, response, query_data );     // отсылаем ответ
+        fflush( log_file );
     } while( 1 );
     return 0;
 }
@@ -61,9 +64,11 @@ void sig_child(int sig)
 {
     pid_t pid;
     int stat;
-    while ((pid=waitpid(-1,&stat,WNOHANG))>0)
+    while( (pid=waitpid(-1,&stat,WNOHANG))>0 )
     {
         sleep(1);
+        if( WIFEXITED(stat) )
+            ret = WEXITSTATUS( stat );
     }
     return;
 }
@@ -74,6 +79,7 @@ int server()
     int res;
     char host[INET_ADDRSTRLEN];     // должно помещаться "ddd.ddd.ddd.ddd"
     const char* char_res;
+    std::vector<pid_t> child_pid;   // массив pid для дочерних процессов
     pid_t pid;
     time_t now;
     struct tm *tm_ptr;
@@ -102,7 +108,7 @@ int server()
     {
     //        if( !req.kepp_alive )     // была идея отслеживать keep-alive таймаут или 30 сек по умолчанию
 // устанавливаем обработчик завершения клиента (уже поработал и отключился, ждем завершение его дочернего процесса)
-//        signal( SIGCHLD, sig_child );
+        signal( SIGCHLD, sig_child );
         client_socket_fd = accept( master_socket, (struct sockaddr*) (&client_name), &client_name_size ); //--подключение нашего клиента
         if( client_socket_fd>0 ) //--если подключение прошло успешно
         {
@@ -111,7 +117,7 @@ int server()
             if( pid==0 )
             {   // child
                 fprintf( log_file, "[Server] Client %d connected\n", getpid() );
-                set_nonblock( client_socket_fd );
+//                set_nonblock( client_socket_fd );
 
                 char_res =  inet_ntop( AF_INET, &client_name.sin_addr, host, sizeof(host) ); // --в переменную host заносим IP-клиента
                 fprintf( log_file, "[Server] Client %s connected\n", host );
@@ -130,30 +136,21 @@ int server()
                 fprintf( log_file, "[Server] Waiting request\n" );
                 fflush( log_file );
                 res = request( client_socket_fd );
-                cout<<"tut3 res="<<res<<endl;
                 time(&now);
                 tm_ptr = localtime(&now);
                 strftime( timebuf, sizeof( timebuf ), "%Y-%B-%e %H:%M:%S", tm_ptr);
                 fprintf( log_file,"[Server] %s Close session on client: %s\n", timebuf, host);
-//                shutdown( client_socket_fd, SHUT_RDWR );
-//                close(client_socket_fd); //--естествено закрываем сокет
-                cout<<"tut4"<<endl;
+                shutdown( client_socket_fd, SHUT_RDWR );
+                close(client_socket_fd); //--естествено закрываем сокет
+//                cout<<"tut4 res="<<res<<endl;
+                fprintf( log_file, "[Server] Client %d closed\n", pid );
+                fflush( log_file );
                 exit( res ); //--гасим дочерний процесс
             }
             else if( pid>0 )   // parent
             {
-                waitpid( pid, &res, 0 );
-                cout<<"tut5 res="<<res<<endl;
-                if( res<0 /*res == -3*/ ) // получена команда завершения сервера
-                {
-                    cout<<"tut6"<<endl;
-                    shutdown( client_socket_fd, SHUT_RDWR );
-                    close( client_socket_fd );
-                    fprintf( log_file, "[Server] Client %d closed\n", pid );
-                    fflush( log_file );
-                    break;
-                }
-                sleep( 1 );
+                child_pid.push_back( pid ); // добавляем дочерний процесс в список
+                fflush( log_file );
             }
             else    // ошибка
             {
@@ -162,9 +159,21 @@ int server()
                 exit( 1 );
             }
         }
+        sleep( 1 );
+        if( ret==3 ) // получена команда завершения сервера
+        {
+            fprintf( log_file, "[Server] Shutdown server received\n", pid );
+            shutdown( master_socket, SHUT_RDWR );
+            close( master_socket );
+            for( auto i: child_pid )
+                kill( i, SIGTERM );
+            fprintf( log_file, "[Server] Closed\n" );
+            fflush( log_file );
+            break;
+        }
     }
 
-    fprintf( log_file, "[Server] Shutdown\n\n" );
+    fprintf( log_file, "[Server] Stop\n\n" );
     fflush( log_file );
     return 0;
 }
@@ -247,19 +256,19 @@ int main( int argc, char** argv )
         }
     }
 
-//    pid = fork();
-//    if( pid<0 )
-//    {
-//        perror( "fork");
-//        exit( 1 );
-//    }
-//    else if( pid>0 )  // parent
-//    {
-//        return 0;   // закрываем родительский процесс
-//    }
-//    else       // child
-//    {
-//        umask(0);   /* Изменяем файловую маску */
+    pid = fork();
+    if( pid<0 )
+    {
+        perror( "fork");
+        exit( 1 );
+    }
+    else if( pid>0 )  // parent
+    {
+        return 0;   // закрываем родительский процесс
+    }
+    else       // child
+    {
+        umask(0);   /* Изменяем файловую маску */
     // открываем файл лога
         log_file = fopen( "final.log", "wb" /*"a" */);
         if( log_file==nullptr )
@@ -268,52 +277,21 @@ int main( int argc, char** argv )
             exit( 1 );
         }
         fprintf( log_file, "current_dir=%s port=%s ip_addr=%s\n", current_dir.data(), port.data(), ip_addr.data() );
-//        if( setsid()<0 )    /* Создание нового SID для дочернего процесса */
-//        {
-//            perror( "setsid");
-//            exit( 1 );
-//        }
-//        /* Закрываем стандартные файловые дескрипторы */
-//        close(STDIN_FILENO);
-//        close(STDOUT_FILENO);
-//        close(STDERR_FILENO);
+        if( setsid()<0 )    /* Создание нового SID для дочернего процесса */
+        {
+            perror( "setsid");
+            exit( 1 );
+        }
+        /* Закрываем стандартные файловые дескрипторы */
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
 
         fflush( log_file );
 //        pid = server_monitor();   // оставляем наш сервер в виде демона
         pid = server();
         return pid;
-//    }
+    }
     return 0;
 }
 
-// отладка с файлами вместо сокетов
-//        if( fd_in<0 )
-//        {
-//            fd_in = open( "query.in", O_RDWR
-//            #if defined(__linux__)
-//                                                | O_NONBLOCK
-//            #else
-//                                        | O_BINARY
-//            #endif
-//                                                        , 0666 );  // O_NONBLOCK не работает в Windows, O_BINARY - в Linux
-//            if( fd_in<0 )
-//            {
-//                perror( "Error open query.in");
-//                return -1;
-//            }
-//        }
-//        if( fd_out<0 )
-//        {
-//            fd_out = open( "query.out", O_RDWR | O_CREAT | O_TRUNC
-//            #if defined(__linux__)
-//                                                | O_NONBLOCK
-//            #else
-//                                        | O_BINARY
-//            #endif
-//                                                        , 0666 );  // O_NONBLOCK не работает в Windows, O_BINARY - в Linux
-//            if( fd_out<0 )
-//            {
-//                perror( "Error open query.out\n");
-//                return -1;
-//            }
-//        }
