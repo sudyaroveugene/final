@@ -41,22 +41,27 @@ int prepare_response( std::list<std::string> &response, data_type &response_data
 
     std::string cwd = getcwd( nullptr, 0 );     // читаем рабочий каталог
 // выделяем расширение файла из content_type
-    std::string ext = ".";
+//    std::string ext = ".";
     size_t beg = req.content_type.find( '/' )+1;
-    size_t end = req.content_type.find( ';' );
-    if( end == string::npos )
-        end = req.content_type.length();
-     ext.append( req.content_type.substr( beg, end-beg ) );
+//    size_t end = req.content_type.find( ';' );
+//    if( end == string::npos )
+//        end = req.content_type.length();
+//    if( beg!=string::npos )
+//        ext.append( req.content_type.substr( beg, end-beg ) );
 // проверяем наличие расширения файла в пути
-    beg = req.uri.rfind( '/' );
-    end = req.uri.rfind( '\\' );
-    size_t slash_pos = beg<end? beg: end;
-    if( slash_pos!=string::npos && slash_pos<(req.uri.length()-1)          // путь содержит слэш и не оканчивается на слэш
-         && req.uri.find( '.', slash_pos )==string::npos )    // и после слэша нет точки
-        req.uri.append( ext );
+//    beg = req.uri.rfind( '/' );
+//    end = req.uri.rfind( '\\' );
+//    size_t slash_pos = beg<end? beg: end;
+//    if( slash_pos==string::npos )   // в URI нет слэша
+//        req.uri.append( ext );
+//    else if( slash_pos!=string::npos && slash_pos<(req.uri.length()-1)          // путь содержит слэш и не оканчивается на слэш
+//                && req.uri.find( '.', slash_pos )==string::npos )    // и после слэша нет точки
+//        req.uri.append( ext );
+//fprintf( log_file, "[Prep Resp] ext added URI=%s\n", req.uri.data() );
     if( req.uri.front()!='/' && req.uri.front()!='\\' )
         cwd.append("/");
     cwd.append( req.uri );  // добавляем путь к текущему каталогу
+fprintf( log_file, "[Prep Resp] full path=%s\n", cwd.data() );
 // проверяем полученный путь
     ssize_t n = 0;
     mode_t mode = 0;     // режим чтения файла
