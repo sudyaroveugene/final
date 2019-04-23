@@ -144,7 +144,7 @@ int server()
                 shutdown( client_socket_fd, SHUT_RDWR );
                 close(client_socket_fd); //--естествено закрываем сокет
 //                cout<<"tut4 res="<<res<<endl;
-                fprintf( log_file, "[Server] Client %d closed\n", pid );
+                fprintf( log_file, "[Server] Client %d closed\n" );
                 fflush( log_file );
                 exit( res ); //--гасим дочерний процесс
             }
@@ -281,6 +281,12 @@ int main( int argc, char** argv )
         if( setsid()<0 )    /* Создание нового SID для дочернего процесса */
         {
             perror( "setsid");
+            exit( 1 );
+        }
+
+        if( (chdir("/home/box/")) < 0) /* Изменяем текущий рабочий каталог */
+        {
+            perror( "chdir" );
             exit( 1 );
         }
         /* Закрываем стандартные файловые дескрипторы */
