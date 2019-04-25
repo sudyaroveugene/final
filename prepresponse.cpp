@@ -37,10 +37,11 @@ int prepare_response( std::list<std::string> &response, data_type &response_data
             default:
                 response.front().append( " 501 Not Implemented\r\n" );
         };
+        response.push_back( "Connection: close\r\n" );
         return 0;
     }
 
-    std::string cwd = current_dir;     // читаем рабочий каталог
+    std::string cwd = current_dir; // рабочий каталог - текущий, с начале меняли его
 // выделяем расширение файла из content_type
 //    std::string ext = ".";
     size_t beg = req.content_type.find( '/' )+1;
@@ -83,6 +84,7 @@ fprintf( log_file, "[Prep Resp] full path=%s\n", cwd.data() );
             req.ret_code = 404;
 //            response.front().pop_back();
             response.front().append( " 404 Not Found\r\n" );
+            response.push_back( "Connection: close\r\n" );
             return 0;
         }
 #if defined(__linux__)
@@ -129,6 +131,7 @@ fprintf( log_file, "[Prep Resp] full path=%s\n", cwd.data() );
             req.ret_code = 404;
 //            response.front().pop_back();
             response.front().append( " 404 Not Found\r\n" );
+            response.push_back( "Connection: close\r\n" );
             return 0;
         }
         beg = 0;
@@ -174,6 +177,7 @@ fprintf( log_file, "[Prep Resp] full path=%s\n", cwd.data() );
     {
         response.front().append( " 501 Not Implemented\r\n" );
     }
+    response.push_back( "Connection: close\r\n" );
     return 0;
 }
 
