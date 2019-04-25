@@ -132,7 +132,7 @@ int server()
                 child_poll.fd = client_socket_fd;
 
                 char_res =  inet_ntop( AF_INET, &client_name.sin_addr, host, sizeof(host) ); // --в переменную host заносим IP-клиента
-                fprintf( log_file, "[Server] Client %s connected\n", host );
+                fprintf( log_file, "[Server] Client %s connected on socket %d\n", host, client_socket_fd );
                 fflush( log_file );
                 if( char_res == nullptr )
                 {
@@ -153,9 +153,14 @@ int server()
 
                 time(&now);
                 tm_ptr = localtime(&now);
-                strftime( timebuf, sizeof( timebuf ), "%Y-%B-%e %H:%M:%S", tm_ptr);
-                fprintf( log_file,"[Server] %s Close session on client: %s %d\n", timebuf, host, getpid() );
-                shutdown( client_socket_fd, SHUT_RDWR );
+//                strftime( timebuf, sizeof( timebuf ), "%Y-%B-%e %H:%M:%S", tm_ptr);
+                strftime( timebuf, sizeof( timebuf ), "%H:%M:%S", tm_ptr);
+                fprintf( log_file,"[Server] %s Close session on client: %s %d fd=%d\n", timebuf, host, getpid(), client_socket_fd );
+                if( shutdown( client_socket_fd, SHUT_RDWR )==-1 )
+                {
+                    fprintf( log_file, "[Server] Error closed client %d: \n", getpid(), strerror(errno));
+                    exit( 1 );
+                }
                 close(client_socket_fd); //--естествено закрываем сокет
                 fprintf( log_file, "[Server] Client %d closed\n", getpid() );
                 fflush( log_file );
@@ -168,18 +173,23 @@ int server()
                 new_child.pid = pid;
                 new_child.fd = client_socket_fd;
                 childs.push_back( new_child ); // добавляем дочерний процесс в список
+                close(client_socket_fd);    // закрываем сокет в родителе, в дочке он остается открытым
                 fflush( log_file );
             }
             else    // ошибка
             {
-                fprintf( log_file, "[Server] Fork failed \"%s\"\n", strerror(errno));
+                fprintf( log_file, "[Server] Fork failed: %s\n", strerror(errno));
                 fflush( log_file );
                 exit( 1 );
             }
         }
-//        sleep( 1 );
+        else
+        {
+//            fprintf( log_file, "[Server] Accept failed fd=%d: %s\n", client_socket_fd, strerror(errno));
+            usleep( 10000 );
+        }
 //     cout<<"tut6 ret="<<ret<<endl;
-        else if( ret==3 ) // получена команда завершения сервера
+        if( ret==3 ) // получена команда завершения сервера
         {
             fprintf( log_file, "[Server] Shutdown server received\n" );
             for( auto i: childs )
