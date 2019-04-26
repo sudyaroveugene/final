@@ -158,7 +158,7 @@ int server()
                 fprintf( log_file,"[Server] %s Close session on client: %s %d fd=%d\n", timebuf, host, getpid(), client_socket_fd );
                 if( shutdown( client_socket_fd, SHUT_RDWR )==-1 )
                 {
-                    fprintf( log_file, "[Server] Error closed client %d: \n", getpid(), strerror(errno));
+                    fprintf( log_file, "[Server] Error closed client %d: %s\n", getpid(), strerror(errno));
                     exit( 1 );
                 }
                 close(client_socket_fd); //--естествено закрываем сокет
@@ -272,9 +272,9 @@ int main( int argc, char** argv )
             exit( 1 );
         }
     /* Закрываем стандартные файловые дескрипторы */
-        close(STDIN_FILENO);
-        close(STDOUT_FILENO);
-        close(STDERR_FILENO);
+//        close(STDIN_FILENO);
+//        close(STDOUT_FILENO);
+//        close(STDERR_FILENO);
 //        pid = server_monitor();   // оставляем наш сервер в виде демона
         pid = server();
         return pid;
