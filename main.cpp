@@ -236,8 +236,8 @@ int main( int argc, char** argv )
 
 // открываем файл лога
 //    printf( "Try to open final.log");
-//        log_file = fopen( "/home/box/final.txt", "a" );
-    log_file = fopen( "/home/eugene/final/final.txt", "a" );
+    log_file = fopen( "/home/box/final.txt", "a" );
+//    log_file = fopen( "/home/eugene/final/final.txt", "a" );
     if( log_file==nullptr )
     {
         perror( "Error open final.log");
@@ -247,24 +247,24 @@ int main( int argc, char** argv )
     fprintf( log_file, "current_dir=%s port=%s ip_addr=%s\n", current_dir.data(), port.data(), ip_addr.data() );
     fflush( log_file );
 
-//    pid = fork();
-//    if( pid<0 )
-//    {
-//        perror( "fork");
-//        exit( 1 );
-//    }
-//    else if( pid>0 )  // parent
-//    {
-//        return 0;   // закрываем родительский процесс
-//    }
-//    else       // child
-//    {
+    pid = fork();
+    if( pid<0 )
+    {
+        perror( "fork");
+        exit( 1 );
+    }
+    else if( pid>0 )  // parent
+    {
+        return 0;   // закрываем родительский процесс
+    }
+    else       // child
+    {
         umask(0);   /* Изменяем файловую маску */
-//        if( setsid()<0 )    /* Создание нового SID для дочернего процесса */
-//        {
-//            perror( "setsid");
-//            exit( 1 );
-//        }
+        if( setsid()<0 )    /* Создание нового SID для дочернего процесса */
+        {
+            perror( "setsid");
+            exit( 1 );
+        }
 
         if( (chdir(current_dir.data())) < 0) /* Изменяем текущий рабочий каталог */
         {
@@ -272,13 +272,13 @@ int main( int argc, char** argv )
             exit( 1 );
         }
     /* Закрываем стандартные файловые дескрипторы */
-//        close(STDIN_FILENO);
-//        close(STDOUT_FILENO);
-//        close(STDERR_FILENO);
-//        pid = server_monitor();   // оставляем наш сервер в виде демона
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
+        pid = server_monitor();   // оставляем наш сервер в виде демона
         pid = server();
         return pid;
-//    }
+    }
     return 0;
 }
 

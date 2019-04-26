@@ -95,14 +95,11 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
         req.ret_code = 501;
         return 1;
     }
-    string quer = uri_group[7].str();
-    string frag = uri_group[9].str();
-    if( uri_group[7].length() || uri_group[9].length() )
-    {
-        fprintf( log_file, "Bad query: Not Implemented \"%s\" with query or fragment expressions in URI\n", req.method_name.data() );
-        req.ret_code = 501;
-        return 1;
-    }
+//    string quer = uri_group[7].str();
+//    string frag = uri_group[9].str();   // фрагмент не обрабатывается сервером, файл отдается целиком, фрагмент обрабатывается клиентом
+//    if( uri_group[7].length() ) // запрос
+//    {
+//    }
     req.uri = uri_group[5].str();
 
     while( isspace( query_start_str[k] ) ) k++;    // пропускаем пустые символы после команды
@@ -115,12 +112,12 @@ int parse_query_start_string( std::string query_start_str, struct query_string &
         req.ret_code = 501;
         return 1;
     }
-//    if( !query_start_str[7] || query_start_str[7] != '0' ) // версия протокола не 1.0
-//    {
-//        fprintf( log_file, "Bad query: HTTP Version Not Supported 1.%c\n", query_start_str[7] );
-//        req.ret_code = 505;
-//        return 1;
-//    }
+    if( !query_start_str[7] || query_start_str[7] != '0' ) // версия протокола не 1.0
+    {
+        fprintf( log_file, "Bad query: HTTP Version Not Supported 1.%c\n", query_start_str[7] );
+        req.ret_code = 505;
+        return 1;
+    }
 
     return 0;
 }
