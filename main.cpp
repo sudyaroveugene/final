@@ -275,7 +275,7 @@ int main( int argc, char** argv )
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
         close(STDERR_FILENO);
-        pid = server_monitor();   // оставляем наш сервер в виде демона
+//        pid = server_monitor();   // оставляем наш сервер в виде демона
         pid = server();
         return pid;
     }
